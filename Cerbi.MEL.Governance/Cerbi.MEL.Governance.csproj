@@ -4,6 +4,22 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+
+
+    <!-- NuGet metadata -->
+    <Version>1.0.0</Version>
+    <PackageId>Cerbi.MEL.Governance</PackageId>
+    <Authors>Thomas Nelson</Authors>
+    <Company>Cerbi LLC</Company>
+    <Description>Real-time governance enforcement for Microsoft.Extensions.Logging (MEL) using the Cerbi validation engine.</Description>
+    <PackageTags>cerbi governance logging structured pii MEL dotnet aspnetcore compliance secure-logging observability</PackageTags>
+    <RepositoryUrl>https://github.com/Zeroshi/Cerbi.MEL.Governance</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://cerbi.io</PackageProjectUrl>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
