@@ -19,9 +19,8 @@ namespace Cerbi
             _validator = validator;
         }
 
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
-            => _inner.BeginScope(state);
-
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
+            _inner.BeginScope(state);
 
         public bool IsEnabled(LogLevel logLevel) => _inner.IsEnabled(logLevel);
 
@@ -33,26 +32,23 @@ namespace Cerbi
             Func<TState, Exception?, string> formatter)
         {
             var fields = ExtractFields(state);
-            var callerType = GetCallerType();
 
-            var topic = GetTopicOverride();
-
+            // Inject CerbiTopic if decorated on the caller
+            var topic = TryResolveTopic();
             if (!string.IsNullOrWhiteSpace(topic))
                 fields["CerbiTopic"] = topic;
 
             var validated = _validator.Validate(fields);
 
-
             if (validated.TryGetValue("GovernanceViolations", out var v) &&
                 v is IEnumerable<string> violations &&
                 violations.Any())
             {
-                return;
+                return; // Block the log
             }
 
             _inner.Log(logLevel, eventId, state, exception, formatter);
         }
-
 
         private Dictionary<string, object> ExtractFields<TState>(TState state)
         {
@@ -62,18 +58,17 @@ namespace Cerbi
             return new Dictionary<string, object> { { "Message", state?.ToString() ?? "" } };
         }
 
-        private static string? GetTopicOverride()
+        private static string? TryResolveTopic()
         {
             var stack = new StackTrace();
-            foreach (var frame in stack.GetFrames())
+            foreach (var frame in stack.GetFrames() ?? Array.Empty<StackFrame>())
             {
-                var method = frame?.GetMethod();
-                var declaringType = method?.DeclaringType;
-
+                var declaringType = frame.GetMethod()?.DeclaringType;
                 if (declaringType == null || declaringType.FullName?.StartsWith("Microsoft.Extensions") == true)
                     continue;
 
-                var attr = declaringType.GetCustomAttributes(typeof(CerbiTopicAttribute), true)
+                var attr = declaringType
+                    .GetCustomAttributes(typeof(CerbiTopicAttribute), inherit: true)
                     .FirstOrDefault() as CerbiTopicAttribute;
 
                 if (attr != null)
@@ -82,26 +77,5 @@ namespace Cerbi
 
             return null;
         }
-
-
-        private static Type? GetCallerType()
-        {
-            var stack = new StackTrace();
-            foreach (var frame in stack.GetFrames())
-            {
-                var method = frame.GetMethod();
-                var type = method?.DeclaringType;
-                if (type == null || type.FullName?.StartsWith("Microsoft.Extensions") == true)
-                    continue;
-
-                // skip internal Cerbi loggers
-                if (type.Assembly.FullName?.Contains("Cerbi") != true)
-                    return type;
-            }
-
-            return null;
-        }
-
     }
-
 }

@@ -16,13 +16,14 @@ namespace Cerbi
             var validator = new RuntimeGovernanceValidator(
                 () => settings.Enabled,
                 settings.Profile,
-                new Cerbi.Governance.FileGovernanceSource(settings.ConfigPath));
+                new FileGovernanceSource(settings.ConfigPath)
+            );
 
             builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider>(sp =>
             {
-                var providers = sp.GetServices<ILoggerProvider>().ToList();
-                var inner = providers.FirstOrDefault(p => p is not CerbiLoggerProvider);
-                return new CerbiLoggerProvider(inner!, validator);
+                var existing = sp.GetServices<ILoggerProvider>().Where(p => p is not CerbiLoggerProvider).ToList();
+                var composite = new CompositeLoggerProvider(existing);
+                return new CerbiLoggerProvider(composite, validator);
             }));
 
             return builder;

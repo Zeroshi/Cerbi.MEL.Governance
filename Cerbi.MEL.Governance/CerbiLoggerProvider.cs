@@ -16,9 +16,14 @@ namespace Cerbi
         }
 
         public ILogger CreateLogger(string categoryName)
-            => new CerbiGovernanceLogger(_inner.CreateLogger(categoryName), _validator);
+        {
+            var innerLogger = _inner.CreateLogger(categoryName);
+            return new CerbiGovernanceLogger(innerLogger, _validator);
+        }
 
-        public void Dispose() => (_inner as IDisposable)?.Dispose();
+        public void Dispose()
+        {
+            (_inner as IDisposable)?.Dispose();
+        }
     }
-
 }
