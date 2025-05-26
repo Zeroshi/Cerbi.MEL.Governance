@@ -19,7 +19,9 @@ namespace Cerbi
             _validator = validator;
         }
 
-        public IDisposable BeginScope<TState>(TState state) => _inner.BeginScope(state);
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull
+            => _inner.BeginScope(state);
+
 
         public bool IsEnabled(LogLevel logLevel) => _inner.IsEnabled(logLevel);
 
