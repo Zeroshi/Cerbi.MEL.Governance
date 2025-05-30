@@ -6,24 +6,26 @@ namespace Cerbi
 {
     public class CerbiLoggerProvider : ILoggerProvider
     {
-        private readonly ILoggerProvider _inner;
+        private readonly ILoggerFactory _factory;
         private readonly RuntimeGovernanceValidator _validator;
+        private readonly string _profileName;
 
-        public CerbiLoggerProvider(ILoggerProvider inner, RuntimeGovernanceValidator validator)
+        public CerbiLoggerProvider(ILoggerFactory factory, RuntimeGovernanceValidator validator, string profileName)
         {
-            _inner = inner;
+            _factory = factory;
             _validator = validator;
+            _profileName = profileName;
         }
 
         public ILogger CreateLogger(string categoryName)
         {
-            var innerLogger = _inner.CreateLogger(categoryName);
-            return new CerbiGovernanceLogger(innerLogger, _validator);
+            var innerLogger = _factory.CreateLogger(categoryName);
+            return new CerbiGovernanceLogger(innerLogger, _validator, _profileName);
         }
 
         public void Dispose()
         {
-            (_inner as IDisposable)?.Dispose();
+            (_factory as IDisposable)?.Dispose();
         }
     }
 }

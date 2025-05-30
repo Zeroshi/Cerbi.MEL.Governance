@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
-using System.Linq;
 using Cerbi.Governance;
 
 namespace Cerbi
@@ -19,12 +18,11 @@ namespace Cerbi
                 new FileGovernanceSource(settings.ConfigPath)
             );
 
-            builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<ILoggerProvider>(sp =>
+            builder.Services.TryAddSingleton<ILoggerProvider>(sp =>
             {
-                var existing = sp.GetServices<ILoggerProvider>().Where(p => p is not CerbiLoggerProvider).ToList();
-                var composite = new CompositeLoggerProvider(existing);
-                return new CerbiLoggerProvider(composite, validator);
-            }));
+                var factory = sp.GetRequiredService<ILoggerFactory>();
+                return new CerbiLoggerProvider(factory, validator, settings.Profile);
+            });
 
             return builder;
         }

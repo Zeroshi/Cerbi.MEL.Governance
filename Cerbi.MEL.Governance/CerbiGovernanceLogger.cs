@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.Json;
 
 namespace Cerbi
 {
@@ -12,11 +13,13 @@ namespace Cerbi
     {
         private readonly ILogger _inner;
         private readonly RuntimeGovernanceValidator _validator;
+        private readonly string _profileName;
 
-        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator)
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string profileName)
         {
             _inner = inner;
             _validator = validator;
+            _profileName = profileName;
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull =>
@@ -33,10 +36,11 @@ namespace Cerbi
         {
             var fields = ExtractFields(state);
 
-            // Inject CerbiTopic if decorated on the caller
             var topic = TryResolveTopic();
             if (!string.IsNullOrWhiteSpace(topic))
                 fields["CerbiTopic"] = topic;
+
+            Console.WriteLine($"[Cerbi] Log evaluated with topic: {topic ?? "none"}");
 
             var validated = _validator.Validate(fields);
 
@@ -44,10 +48,19 @@ namespace Cerbi
                 v is IEnumerable<string> violations &&
                 violations.Any())
             {
-                return; // Block the log
+                fields["GovernanceViolations"] = violations.ToArray();
+                fields["GovernanceRelaxed"] = false;
+                fields["GovernanceProfileUsed"] = _profileName;
             }
 
-            _inner.Log(logLevel, eventId, state, exception, formatter);
+            // Optional debug print
+            Console.WriteLine("[Cerbi] Enriched Fields: " + JsonSerializer.Serialize(fields));
+
+            // Logging as a scope to make sure console formats show them
+            using (_inner.BeginScope(fields))
+            {
+                _inner.Log(logLevel, eventId, state, exception, formatter);
+            }
         }
 
         private Dictionary<string, object> ExtractFields<TState>(TState state)

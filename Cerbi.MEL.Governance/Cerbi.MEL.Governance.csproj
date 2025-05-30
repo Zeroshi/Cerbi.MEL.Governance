@@ -8,7 +8,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <!-- NuGet metadata -->
-    <Version>1.0.2</Version>
+    <Version>1.0.15</Version>
     <PackageId>Cerbi.MEL.Governance</PackageId>
     <Authors>Thomas Nelson</Authors>
     <Company>Cerbi LLC</Company>
@@ -25,6 +25,7 @@
     <PackageReference Include="Cerbi.Governance.Core" Version="1.0.2" />
     <PackageReference Include="Cerbi.Governance.Runtime" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.5" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.5" />
   </ItemGroup>
 
   <ItemGroup>
