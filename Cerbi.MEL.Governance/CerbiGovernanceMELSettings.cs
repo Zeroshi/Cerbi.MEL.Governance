@@ -12,5 +12,5 @@ namespace Cerbi
         public string ConfigPath { get; set; } = "cerbi_governance.json";
         public bool Enabled { get; set; } = true;
     }
-
 }
+

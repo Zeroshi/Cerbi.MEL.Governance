@@ -8,7 +8,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <!-- NuGet metadata -->
-    <Version>1.0.15</Version>
+    <Version>1.0.19</Version>
     <PackageId>Cerbi.MEL.Governance</PackageId>
     <Authors>Thomas Nelson</Authors>
     <Company>Cerbi LLC</Company>
@@ -22,13 +22,22 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cerbi.Governance.Core" Version="1.0.2" />
+    <!-- Core Cerbi validation engine (unchanged) -->
+    <PackageReference Include="Cerbi.Governance.Core"    Version="1.0.2" />
     <PackageReference Include="Cerbi.Governance.Runtime" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.5" />
+
+    <!-- Only the logging *abstractions* (ILogger, ILoggerProvider, etc.) -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
+
+    <!-- Only the console sink (since we wrap it in our provider) -->
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.5" />
+
+    <!-- DI‐abstractions so our extension can register services -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.5" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Include your README as part of the package (unchanged) -->
     <None Include="README.md" Pack="true" PackagePath="" />
   </ItemGroup>
 

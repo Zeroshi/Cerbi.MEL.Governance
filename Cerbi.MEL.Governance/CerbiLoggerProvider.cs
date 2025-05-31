@@ -1,31 +1,35 @@
-﻿using Cerbi.Governance;
-using Microsoft.Extensions.Logging;
-using System;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
+using Cerbi.Governance;
 
 namespace Cerbi
 {
     public class CerbiLoggerProvider : ILoggerProvider
     {
-        private readonly ILoggerFactory _factory;
+        private readonly ConsoleLoggerProvider _consoleProvider;
         private readonly RuntimeGovernanceValidator _validator;
         private readonly string _profileName;
 
-        public CerbiLoggerProvider(ILoggerFactory factory, RuntimeGovernanceValidator validator, string profileName)
+        public CerbiLoggerProvider(
+            ConsoleLoggerProvider consoleProvider,
+            RuntimeGovernanceValidator validator,
+            string profileName)
         {
-            _factory = factory;
+            _consoleProvider = consoleProvider;
             _validator = validator;
             _profileName = profileName;
         }
 
         public ILogger CreateLogger(string categoryName)
         {
-            var innerLogger = _factory.CreateLogger(categoryName);
-            return new CerbiGovernanceLogger(innerLogger, _validator, _profileName);
+            // wrap just the console logger
+            var inner = _consoleProvider.CreateLogger(categoryName);
+            return new CerbiGovernanceLogger(inner, _validator, _profileName);
         }
 
         public void Dispose()
         {
-            (_factory as IDisposable)?.Dispose();
+            _consoleProvider.Dispose();
         }
     }
 }
