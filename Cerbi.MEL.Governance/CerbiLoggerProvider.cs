@@ -1,35 +1,37 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
-using Cerbi.Governance;
+﻿using Cerbi.Governance;                // for RuntimeGovernanceValidator
+using Microsoft.Extensions.Logging;
 
 namespace Cerbi
 {
+    /// <summary>
+    /// This provider wraps the host’s ILoggerFactory and injects a CerbiGovernanceLogger on top.
+    /// </summary>
     public class CerbiLoggerProvider : ILoggerProvider
     {
-        private readonly ConsoleLoggerProvider _consoleProvider;
+        private readonly ILoggerFactory _innerFactory;
         private readonly RuntimeGovernanceValidator _validator;
         private readonly string _profileName;
 
         public CerbiLoggerProvider(
-            ConsoleLoggerProvider consoleProvider,
+            ILoggerFactory innerFactory,
             RuntimeGovernanceValidator validator,
             string profileName)
         {
-            _consoleProvider = consoleProvider;
+            _innerFactory = innerFactory;
             _validator = validator;
             _profileName = profileName;
         }
 
         public ILogger CreateLogger(string categoryName)
         {
-            // wrap just the console logger
-            var inner = _consoleProvider.CreateLogger(categoryName);
-            return new CerbiGovernanceLogger(inner, _validator, _profileName);
+            // Ask the existing ILoggerFactory to produce a “real” ILogger (e.g. Console sink, etc.)
+            var innerLogger = _innerFactory.CreateLogger(categoryName);
+            return new CerbiGovernanceLogger(innerLogger, _validator, _profileName);
         }
 
         public void Dispose()
         {
-            _consoleProvider.Dispose();
+            // We do NOT dispose the innerFactory here.  The host will tear it down at shutdown.
         }
     }
 }

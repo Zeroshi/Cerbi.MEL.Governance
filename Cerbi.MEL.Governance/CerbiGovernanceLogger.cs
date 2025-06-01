@@ -1,4 +1,4 @@
-﻿using Cerbi.Governance;
+﻿using Cerbi.Governance;    // for RuntimeGovernanceValidator, FileGovernanceSource
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -12,27 +12,23 @@ namespace Cerbi
     {
         private readonly ILogger _inner;
         private readonly RuntimeGovernanceValidator _validator;
-        private readonly string _profileName;
+        private readonly string _defaultTopic;
 
         public CerbiGovernanceLogger(
             ILogger inner,
             RuntimeGovernanceValidator validator,
-            string profileName)
+            string defaultTopic)
         {
             _inner = inner;
             _validator = validator;
-            _profileName = profileName;
+            _defaultTopic = defaultTopic ?? string.Empty;
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
-        {
-            return _inner.BeginScope(state);
-        }
+            => _inner.BeginScope(state);
 
         public bool IsEnabled(LogLevel logLevel)
-        {
-            return _inner.IsEnabled(logLevel);
-        }
+            => _inner.IsEnabled(logLevel);
 
         public void Log<TState>(
             LogLevel logLevel,
@@ -41,81 +37,87 @@ namespace Cerbi
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            // 1) Attempt to find [CerbiTopic("...")] on the call stack
-            var topic = TryResolveTopic();
+            // 1) Determine Cerbi topic (attribute‐based or fallback):
+            var topicFromAttribute = TryResolveTopic();
+            var topic = !string.IsNullOrWhiteSpace(topicFromAttribute)
+                        ? topicFromAttribute!
+                        : _defaultTopic;
 
-            // 2) If no topic is found, bypass Cerbi and log exactly once
+            // 2) If no topic at all, just delegate directly—no Cerbi enrichment:
             if (string.IsNullOrWhiteSpace(topic))
             {
                 _inner.Log(logLevel, eventId, state, exception, formatter);
                 return;
             }
 
-            // 3) Extract structured fields out of TState
+            // 3) Extract structured fields from the “state” if possible:
             var fields = ExtractFields(state);
 
-            // 4) Inject the CerbiTopic so our validator knows which profile to use
-            fields["CerbiTopic"] = topic!;
+            // 4) Inject the “CerbiTopic” so the validator knows which profile to use:
+            fields["CerbiTopic"] = topic;
 
-            // 5) Run the governance validation
+            // 5) Run governance‐validation:
             var validated = _validator.Validate(fields);
 
-            // 6) If there are violations, inject them. Otherwise record that we enforced with the chosen profile.
+            // 6) If there are violations, record them; otherwise record “enforced”:
             if (validated.TryGetValue("GovernanceViolations", out var v)
                 && v is IEnumerable<string> violations
                 && violations.Any())
             {
                 fields["GovernanceViolations"] = violations.ToArray();
                 fields["GovernanceRelaxed"] = false;
-                fields["GovernanceProfileUsed"] = _profileName;
+                fields["GovernanceProfileUsed"] = topic;
             }
             else
             {
-                // No violations: still record that we enforced and which profile
-                fields["GovernanceProfileUsed"] = _profileName;
+                fields["GovernanceProfileUsed"] = topic;
                 fields["GovernanceEnforced"] = true;
                 fields["GovernanceMode"] = "Strict";
-                // If you want “Relaxed” mode instead, swap the string here accordingly.
             }
 
-            // 7) Build a single combined message:
-            //    [Cerbi] <original‐formatted‐message> | <all‐fields‐JSON>
-            string originalText = formatter(state, exception);
-            string governanceJson = JsonSerializer.Serialize(fields);
+            // ────────────────────────────────────────────────────────────────────
+            // 7a) First, log the original message exactly as the caller wrote it:
+            // ────────────────────────────────────────────────────────────────────
+            _inner.Log(logLevel, eventId, state, exception, formatter);
 
-            string mergedMessage = $"[Cerbi] {originalText} | {governanceJson}";
-
-            // 8) Finally, log only once to the inner provider, using the mergedMessage as the “state”
+            // ────────────────────────────────────────────────────────────────────
+            // 7b) Then serialize our “fields” dictionary to JSON and log it:
+            // ────────────────────────────────────────────────────────────────────
+            string jsonPayload = JsonSerializer.Serialize(fields);
             _inner.Log(
-                logLevel,
-                eventId,
-                mergedMessage,
+                logLevel,      // same severity
+                eventId,       // same EventId
+                jsonPayload,   // pass the JSON string as the “state”
                 exception,
-                (msg, ex) => msg!);
+                (msg, ex) => msg!    // simple formatter: just prints the JSON string
+            );
         }
 
-        // Walk the stack to find the first non‐Microsoft.Extensions type with [CerbiTopic("...")]
+        /// <summary>
+        /// Walks the stack to find the first non‐Microsoft.Extensions class (or method)
+        /// decorated with [CerbiTopic("…")]. Returns that topic or null if none.
+        /// </summary>
         private static string? TryResolveTopic()
         {
             var stack = new StackTrace();
             foreach (var frame in stack.GetFrames() ?? Array.Empty<StackFrame>())
             {
-                var method = frame.GetMethod();
-                var declaring = method?.DeclaringType;
-                var fullName = declaring?.FullName;
+                var declaring = frame.GetMethod()?.DeclaringType;
+                if (declaring == null)
+                    continue;
 
-                // Skip any Microsoft.Extensions frames entirely
+                var fullName = declaring.FullName;
+                // Skip any Microsoft.Extensions.* frames:
                 if (string.IsNullOrWhiteSpace(fullName)
                     || fullName.StartsWith("Microsoft.Extensions", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                // Look for our custom attribute:
+                // Look for our CerbiTopicAttribute on that type:
                 var attr = declaring
                     .GetCustomAttributes(typeof(CerbiTopicAttribute), inherit: true)
                     .FirstOrDefault() as CerbiTopicAttribute;
-
                 if (attr != null)
                 {
                     return attr.TopicName;
@@ -125,13 +127,15 @@ namespace Cerbi
             return null;
         }
 
-        // If TState is IEnumerable<KeyValuePair<string,object>>, we copy into a dictionary.
-        // Otherwise, we just emit one field named "Message" = state.ToString().
+        /// <summary>
+        /// If TState is IEnumerable<KeyValuePair<string,object>>, copy into a Dictionary.
+        /// Otherwise, return a new Dictionary { "Message": state.ToString() }.
+        /// </summary>
         private static Dictionary<string, object> ExtractFields<TState>(TState state)
         {
             if (state is IEnumerable<KeyValuePair<string, object>> kvps)
             {
-                return kvps.ToDictionary(k => k.Key, v => v.Value);
+                return kvps.ToDictionary(k => k.Key, v => v.Value!);
             }
 
             return new Dictionary<string, object>

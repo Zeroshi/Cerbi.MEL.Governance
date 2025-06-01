@@ -2,6 +2,8 @@
 
 **Real-time logging governance enforcement for Microsoft.Extensions.Logging (MEL)** using the Cerbi validation engine.
 
+Demo and implementation: [github.com/Zeroshi/Cerbi.MEL.Governance](https://github.com/Zeroshi/Cerbi.MEL.Governance)
+
 Cerbi.MEL.Governance is part of the [Cerbi](https://cerbi.io) suite. It enables runtime validation of log fields based on structured governance profiles. Built for ASP.NET Core, Worker Services, Azure Functions, and any .NET app using Microsoft.Extensions.Logging.
 
 ---
@@ -64,7 +66,7 @@ builder.Logging.AddCerbiGovernance(options =>
 
 ---
 
-## 🔹 Optional: Use \[CerbiTopic("...")] to route logs to specific profiles
+## 🔹 Optional: Use `[CerbiTopic("...")]` to route logs to specific profiles
 
 ```csharp
 [CerbiTopic("Orders")]
