@@ -1,10 +1,12 @@
-﻿# Cerbi.MEL.Governance (Working Version)
+﻿# Cerbi.MEL.Governance (Draft Version)
+
+## Current work: only emit the secondary log when violations occur.
 
 **Demo & Examples:** [https://github.com/Zeroshi/Cerbi.MEL.Governance](https://github.com/Zeroshi/Cerbi.MEL.Governance)
 
 **Real-time logging governance enforcement for Microsoft.Extensions.Logging (MEL)** using the Cerbi validation engine.
 
-> 🚧 **Note:** This release is a working version that always emits two console lines per log entry—one for the original message and one for governance verification. Future improvements will only emit the secondary log when violations occur. We’re also planning a dedicated `Relax()` helper for relaxed mode, pending MEL plugin constraints.
+> 🚧 **Note:** In this release, the plugin emits the primary log line always and only emits a secondary JSON payload when there are governance violations. A dedicated `Relax()` helper for relaxed mode has not yet been added.
 >
 > We’ve been thrilled—and a bit surprised—by nearly 2,000 downloads in just a few days since this was quietly released. Thank you for your patience and feedback as we continue improving this project!
 
@@ -21,7 +23,7 @@ See the sample implementation in our [Demo & Examples Repository](https://github
 ## 🚀 Features (Current Scope)
 
 * ✅ Enforce required and forbidden fields
-* ✅ Drop or tag logs with governance violations (always writes a second line for verification)
+* ✅ Drop or tag logs with governance violations (only writes a second line when violations occur)
 * ✅ Supports structured logging and `BeginScope`
 * ✅ Supports `[CerbiTopic("...")]` profile routing via caller class detection (injected `CerbiTopic` field)
 * ✅ Compatible with any MEL-compatible sink (Console, File, Seq, etc.)
@@ -33,7 +35,7 @@ See the sample implementation in our [Demo & Examples Repository](https://github
 ## 📆 Installation
 
 ```bash
-dotnet add package Cerbi.MEL.Governance
+ dotnet add package Cerbi.MEL.Governance
 ```
 
 ---
@@ -70,9 +72,9 @@ using Cerbi.MEL.Governance;
 
 builder.Logging.AddCerbiGovernance(options =>
 {
-    options.Profile = "Orders";      // default fallback topic
+    options.Profile    = "Orders";                   // default fallback topic
     options.ConfigPath = "cerbi_governance.json";
-    options.Enabled = true;            // enable or disable governance at runtime
+    options.Enabled    = true;                         // enable or disable governance at runtime
 });
 ```
 
@@ -121,7 +123,7 @@ _logger.LogInformation("Email-only (relaxed): {email} {Relax}", "user@example.co
 
 ## 🧐 Governance Output
 
-When governance enrichment is enabled, the plugin always writes a JSON payload on a second line. Examples:
+When governance enrichment is enabled, the plugin writes a JSON payload only on a second line when violations occur. Examples:
 
 1. **Violation example (missing required field):**
 
@@ -143,7 +145,7 @@ When governance enrichment is enabled, the plugin always writes a JSON payload o
 }
 ```
 
-3. **Relaxed example (AllowRelax = true, `Relax=true` passed):**
+3. **Relaxed example (AllowRelax = true, `Relax = true` passed):**
 
 ```json
 {
@@ -164,7 +166,7 @@ Cerbi.MEL.Governance is safe for use in secure logging pipelines. No outbound ca
 
 ## 🔗 Related Projects
 
-* 🌐 [CerbiStream](https://www.nuget.org/packages/CerbiStream) — Core logging library
-* ⚙️ [Cerbi.Serilog.Governance](https://www.nuget.org/packages/Cerbi.Serilog.Governance)
-* 🔧 [Cerbi.Governance.Runtime](https://www.nuget.org/packages/Cerbi.Governance.Runtime)
-* 📘 [Cerbi Docs](https://cerbi.io)
+* 🌐 CerbiStream — Core logging library
+* ⚙️ Cerbi.Serilog.Governance
+* 🔧 Cerbi.Governance.Runtime
+* 📘 Cerbi Docs

@@ -1,4 +1,4 @@
-﻿using Cerbi.Governance;    // for RuntimeGovernanceValidator, FileGovernanceSource
+﻿using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -8,6 +8,11 @@ using System.Text.Json;
 
 namespace Cerbi
 {
+    /// <summary>
+    /// Wraps the real ILogger (in our case, the single console sink) and emits:
+    ///   • Always: the original message exactly as the caller wrote it
+    ///   • If (and only if) there is at least one violation: a second JSON‐only line
+    /// </summary>
     public class CerbiGovernanceLogger : ILogger
     {
         private readonly ILogger _inner;
@@ -43,14 +48,14 @@ namespace Cerbi
                         ? topicFromAttribute!
                         : _defaultTopic;
 
-            // 2) If no topic at all, just delegate directly—no Cerbi enrichment:
+            // 2) If no topic at all, delegate directly—no Cerbi enrichment:
             if (string.IsNullOrWhiteSpace(topic))
             {
                 _inner.Log(logLevel, eventId, state, exception, formatter);
                 return;
             }
 
-            // 3) Extract structured fields from the “state” if possible:
+            // 3) Extract structured fields from “state” if possible:
             var fields = ExtractFields(state);
 
             // 4) Inject the “CerbiTopic” so the validator knows which profile to use:
@@ -60,6 +65,7 @@ namespace Cerbi
             var validated = _validator.Validate(fields);
 
             // 6) If there are violations, record them; otherwise record “enforced”:
+            bool hasViolation = false;
             if (validated.TryGetValue("GovernanceViolations", out var v)
                 && v is IEnumerable<string> violations
                 && violations.Any())
@@ -67,6 +73,7 @@ namespace Cerbi
                 fields["GovernanceViolations"] = violations.ToArray();
                 fields["GovernanceRelaxed"] = false;
                 fields["GovernanceProfileUsed"] = topic;
+                hasViolation = true;
             }
             else
             {
@@ -75,36 +82,30 @@ namespace Cerbi
                 fields["GovernanceMode"] = "Strict";
             }
 
-            // ────────────────────────────────────────────────────────────────────
-            // 7a) First, log the original message exactly as the caller wrote it:
-            // ────────────────────────────────────────────────────────────────────
+            // 7a) Always log the original message exactly as the caller wrote it:
             _inner.Log(logLevel, eventId, state, exception, formatter);
 
-            // ────────────────────────────────────────────────────────────────────
-            // 7b) Then serialize our “fields” dictionary to JSON and log it:
-            // ────────────────────────────────────────────────────────────────────
-            string jsonPayload = JsonSerializer.Serialize(fields);
-            _inner.Log(
-                logLevel,      // same severity
-                eventId,       // same EventId
-                jsonPayload,   // pass the JSON string as the “state”
-                exception,
-                (msg, ex) => msg!    // simple formatter: just prints the JSON string
-            );
+            // 7b) Only if there was at least one violation, serialize “fields” to JSON and log it:
+            if (hasViolation)
+            {
+                string jsonPayload = JsonSerializer.Serialize(fields);
+                _inner.Log(
+                    logLevel,      // same severity
+                    eventId,       // same EventId
+                    jsonPayload,   // pass the JSON string as the “state”
+                    exception,
+                    (msg, ex) => msg! // simple formatter: just prints the JSON string
+                );
+            }
         }
 
-        /// <summary>
-        /// Walks the stack to find the first non‐Microsoft.Extensions class (or method)
-        /// decorated with [CerbiTopic("…")]. Returns that topic or null if none.
-        /// </summary>
         private static string? TryResolveTopic()
         {
             var stack = new StackTrace();
             foreach (var frame in stack.GetFrames() ?? Array.Empty<StackFrame>())
             {
                 var declaring = frame.GetMethod()?.DeclaringType;
-                if (declaring == null)
-                    continue;
+                if (declaring == null) continue;
 
                 var fullName = declaring.FullName;
                 // Skip any Microsoft.Extensions.* frames:
@@ -118,19 +119,12 @@ namespace Cerbi
                 var attr = declaring
                     .GetCustomAttributes(typeof(CerbiTopicAttribute), inherit: true)
                     .FirstOrDefault() as CerbiTopicAttribute;
-                if (attr != null)
-                {
-                    return attr.TopicName;
-                }
+                if (attr != null) return attr.TopicName;
             }
 
             return null;
         }
 
-        /// <summary>
-        /// If TState is IEnumerable<KeyValuePair<string,object>>, copy into a Dictionary.
-        /// Otherwise, return a new Dictionary { "Message": state.ToString() }.
-        /// </summary>
         private static Dictionary<string, object> ExtractFields<TState>(TState state)
         {
             if (state is IEnumerable<KeyValuePair<string, object>> kvps)

@@ -1,6 +1,7 @@
-﻿using Cerbi.Governance;                  // for RuntimeGovernanceValidator, FileGovernanceSource
+﻿using Cerbi.Governance;                // for RuntimeGovernanceValidator, FileGovernanceSource
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using System;
 
 namespace Cerbi
@@ -8,19 +9,19 @@ namespace Cerbi
     public static class CerbiLoggingBuilderExtensions
     {
         /// <summary>
-        /// Call this immediately after you do AddSimpleConsole(...).
-        /// It wraps the host’s existing ILoggerFactory (which already has a Console sink)
-        /// so that every ILogger<T> becomes a CerbiGovernanceLogger.
+        /// Adds Cerbi‐governance on top of a single Console sink.  
+        /// Call this *instead* of AddSimpleConsole(...) in your Program.cs.
         /// </summary>
         public static ILoggingBuilder AddCerbiGovernance(
             this ILoggingBuilder builder,
-            Action<CerbiGovernanceMELSettings> configure)
+            Action<CerbiGovernanceMELSettings> configure
+        )
         {
             // 1) Let the caller configure Profile, ConfigPath, Enabled
             var settings = new CerbiGovernanceMELSettings();
             configure(settings);
 
-            // 2) Build one RuntimeGovernanceValidator that all loggers will share:
+            // 2) Build one RuntimeGovernanceValidator (shared by all loggers)
             var validator = new RuntimeGovernanceValidator(
                 () => settings.Enabled,
                 settings.Profile,
@@ -28,21 +29,24 @@ namespace Cerbi
             );
 
             //
-            // 3) We assume the caller already did:
-            //      logging.AddSimpleConsole(...)
-            //    so that the host’s ILoggerFactory has a Console sink inside it.
+            // 3) Register exactly one ConsoleLoggerProvider in DI.
+            //    This guarantees that `ConsoleLoggerProvider` can be resolved below.
             //
+            builder.Services.AddSingleton<ConsoleLoggerProvider>();
 
-            // 4) Register our CerbiLoggerProvider, wrapping the existing ILoggerFactory:
+            //
+            // 4) Register our CerbiLoggerProvider, wrapping the single ConsoleLoggerProvider:
+            //
             builder.Services.AddSingleton<ILoggerProvider>(sp =>
             {
-                // Grab the host’s ILoggerFactory (already containing Console sink, etc.)
-                var factory = sp.GetRequiredService<ILoggerFactory>();
+                // a. Resolve the one-and-only ConsoleLoggerProvider
+                var consoleProv = sp.GetRequiredService<ConsoleLoggerProvider>();
 
+                // b. Wrap it in our CerbiLoggerProvider
                 return new CerbiLoggerProvider(
-                    factory,
-                    validator,
-                    settings.Profile
+                    consoleProv,     // the one Console sink
+                    validator,       // shared validator
+                    settings.Profile // fallback profile name
                 );
             });
 

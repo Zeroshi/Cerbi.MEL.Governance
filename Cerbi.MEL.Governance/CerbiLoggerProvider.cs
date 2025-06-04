@@ -1,37 +1,42 @@
-﻿using Cerbi.Governance;                // for RuntimeGovernanceValidator
+﻿using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 namespace Cerbi
 {
     /// <summary>
-    /// This provider wraps the host’s ILoggerFactory and injects a CerbiGovernanceLogger on top.
+    /// This provider wraps a ConsoleLoggerProvider (the “real” console sink)
+    /// and injects CerbiGovernanceLogger on top of it.
     /// </summary>
     public class CerbiLoggerProvider : ILoggerProvider
     {
-        private readonly ILoggerFactory _innerFactory;
+        private readonly ConsoleLoggerProvider _consoleProvider;
         private readonly RuntimeGovernanceValidator _validator;
-        private readonly string _profileName;
+        private readonly string _defaultTopic;
 
         public CerbiLoggerProvider(
-            ILoggerFactory innerFactory,
+            ConsoleLoggerProvider consoleProvider,
             RuntimeGovernanceValidator validator,
             string profileName)
         {
-            _innerFactory = innerFactory;
+            _consoleProvider = consoleProvider;
             _validator = validator;
-            _profileName = profileName;
+            _defaultTopic = profileName ?? string.Empty;
         }
 
         public ILogger CreateLogger(string categoryName)
         {
-            // Ask the existing ILoggerFactory to produce a “real” ILogger (e.g. Console sink, etc.)
-            var innerLogger = _innerFactory.CreateLogger(categoryName);
-            return new CerbiGovernanceLogger(innerLogger, _validator, _profileName);
+            // Ask the “real” console sink to create its ILogger for this category:
+            var innerLogger = _consoleProvider.CreateLogger(categoryName);
+
+            // Wrap that console‐logger in your CerbiGovernanceLogger:
+            return new CerbiGovernanceLogger(innerLogger, _validator, _defaultTopic);
         }
 
         public void Dispose()
         {
-            // We do NOT dispose the innerFactory here.  The host will tear it down at shutdown.
+            // Only dispose the console sink when the host shuts down:
+            _consoleProvider.Dispose();
         }
     }
 }
