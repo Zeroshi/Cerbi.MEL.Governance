@@ -2,7 +2,7 @@
 
 **Real-time logging governance enforcement for Microsoft.Extensions.Logging (MEL) using the Cerbi validation engine.**
 
-> 🚧 **Note:** In this release (v1.0.35), the plugin always emits your original log line, and only emits a secondary JSON payload when governance violations occur. A dedicated `Relax()` helper method has not yet been added.
+> 🚧 **Note:** In this release (v1.0.36), the plugin always emits your original log line, and only emits a secondary JSON payload when governance violations occur. A dedicated `Relax()` helper method has not yet been added.
 
 Cerbi.MEL.Governance is part of the [Cerbi](https://cerbi.io) suite. It enables runtime validation of log fields based on structured governance profiles. Built for ASP.NET Core, Worker Services, Azure Functions, or any .NET app that uses Microsoft.Extensions.Logging.
 
@@ -30,7 +30,7 @@ See the sample usage in our [Demo & Examples repository](https://github.com/Zero
 ## 📆 Installation
 
 ```bash
-dotnet add package Cerbi.MEL.Governance --version 1.0.35
+dotnet add package Cerbi.MEL.Governance --version 1.0.36
 ```
 
 ---
