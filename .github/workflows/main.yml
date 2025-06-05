@@ -1,0 +1,77 @@
+name: Cerbi MEL Governance CI
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build-and-publish:
+    name: Build, Test, and Publish NuGet Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+
+      - name: 🧠 Locate Main Project and Solution Files
+        id: locate
+        run: |
+          PROJECT_PATH=$(find . -maxdepth 2 -name "Cerbi.MEL.Governance.csproj" | head -n 1)
+          SOLUTION_PATH=$(find . -maxdepth 1 -name "*.sln" | head -n 1)
+          echo "PROJECT_PATH=$PROJECT_PATH" >> $GITHUB_ENV
+          echo "SOLUTION_PATH=$SOLUTION_PATH" >> $GITHUB_ENV
+          echo "✅ Found project: $PROJECT_PATH"
+          echo "✅ Found solution: $SOLUTION_PATH"
+
+      - name: 🏷️ Set Version & Metadata in .csproj
+        run: |
+          VERSION="1.0.${{ github.run_number }}"
+          echo "Using version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+          sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|g" "${{ env.PROJECT_PATH }}"
+          sed -i "s|<RepositoryUrl>.*</RepositoryUrl>|<RepositoryUrl>https://github.com/Zeroshi/Cerbi.MEL.Governance</RepositoryUrl>|g" "${{ env.PROJECT_PATH }}"
+          sed -i "s|<RepositoryType>.*</RepositoryType>|<RepositoryType>git</RepositoryType>|g" "${{ env.PROJECT_PATH }}"
+
+      - name: 🛠 Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+
+      - name: 📦 Restore Solution Dependencies
+        run: dotnet restore "${{ env.SOLUTION_PATH }}"
+
+      - name: 🏗️ Build Full Solution
+        run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
+
+      - name: 🧪 Run Unit Tests (if present)
+        run: |
+          TEST_PATH=$(find . -maxdepth 2 -name "*Tests*.csproj" | head -n 1)
+          if [ -z "$TEST_PATH" ]; then
+            echo "⚠️ No test project found, skipping tests."
+          else
+            echo "✅ Running tests from: $TEST_PATH"
+            dotnet test "$TEST_PATH" --configuration Release --no-restore --logger:"console;verbosity=detailed"
+          fi
+
+      - name: 📦 Pack NuGet Package
+        run: dotnet pack "${{ env.PROJECT_PATH }}" --configuration Release --output ./nupkgs
+
+      - name: 🧾 Confirm Package Built
+        run: |
+          ls -l ./nupkgs/*.nupkg || (echo "❌ No NuGet package found!" && exit 1)
+
+      - name: 🔐 Validate NuGet API Key
+        run: |
+          if [ -z "${{ secrets.NUGET_API_KEY }}" ]; then
+            echo "❌ Missing NuGet API Key!"
+            exit 1
+          fi
+
+      - name: 🚀 Push to NuGet
+        run: |
+          dotnet nuget push "./nupkgs/*.nupkg" \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
