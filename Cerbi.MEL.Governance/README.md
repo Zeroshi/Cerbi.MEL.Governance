@@ -211,14 +211,80 @@ Notes:
 
 ---
 
-## Further optimization options (advanced)
+## What’s new (performance)
 
-These changes can reduce allocations and CPU in heavy logging scenarios:
+We optimized the hot path to improve throughput and reduce allocations:
 
-* Cache attribute-topic lookup per declaring type (or per logger category) so repeated calls avoid walking the stack.
-* Replace `ExtractFields` `ToDictionary` with a manual copy into a pre-sized `Dictionary<string, object>`.
+* Attribute-topic caching
+  * Cache topic by logger category name and by declaring type.
+  * Resolve via category (no StackTrace) when available; otherwise do a single lazy StackTrace scan per logger instance.
+* Lower-allocation field extraction
+  * Replace `ToDictionary` with a manual copy into a pre-sized `Dictionary<string, object>` (ordinal comparer) for structured state.
 
-These can be layered without changing the public API.
+Result: fewer CPU cycles and fewer allocations per log in happy-path scenarios.
+
+---
+
+## Expected throughput (single-thread, .NET8, in-process, no I/O)
+
+Rules of thumb you can expect when measuring against a no-op sink:
+
+* Default-topic empty (bypass):    3–10 million logs/sec is strong.
+* Attribute-topic path with caching (structured state of a few fields):  2–6 million logs/sec is strong.
+* If a StackTrace is performed on every log (pre-optimization), sub-0.5 million logs/sec is common.
+
+With real console/file sinks (I/O-bound), 50–200k logs/sec is normal. Hot-path gains are masked by I/O there, but still reduce CPU spikes.
+
+---
+
+## Benchmarks
+
+A small BenchmarkDotNet project is included.
+
+Run locally (from repo root):
+
+* `dotnet restore`
+* `dotnet build -c Release BenchmarkSuite1/BenchmarkSuite1.csproj`
+* `dotnet run -c Release --project BenchmarkSuite1 -- --list tree`
+* Run a specific benchmark:
+  * `dotnet run -c Release --project BenchmarkSuite1 -- --filter "*AttributeTopic*"`
+
+Tips for consistent results:
+
+* Close background apps; use AC power; keep filters quoted in PowerShell.
+* The `CPUUsageDiagnoser` attribute is a stub and won’t block runs.
+
+---
+
+## Optimized output (runtime behavior)
+
+* Original line is always preserved.
+* Second JSON payload appears only when there’s a violation.
+
+Examples:
+
+**Missing required field `userId`:**
+```
+{"GovernanceProfileUsed":"Orders","GovernanceViolations":["MissingField:userId"],"GovernanceRelaxed":false}
+```
+
+**Forbidden field `password`:**
+```
+{"GovernanceProfileUsed":"Orders","GovernanceViolations":["ForbiddenField:password"],"GovernanceRelaxed":false}
+```
+
+**Relaxed example (`AllowRelax = true`, `Relax = true`):**
+```
+{"email":"user@example.com","CerbiTopic":"Orders","GovernanceRelaxed":true,"GovernanceProfileUsed":"Orders"}
+```
+
+---
+
+## Further tuning (advanced)
+
+* Ensure logger categories map to concrete types to maximize attribute-topic cache hits.
+* Keep structured state small and typed; avoid unnecessary boxing.
+* Real sinks (console/file) are I/O-bound—batching or async sinks improve overall throughput.
 
 ---
 
