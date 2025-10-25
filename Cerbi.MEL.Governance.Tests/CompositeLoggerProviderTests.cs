@@ -8,16 +8,13 @@ namespace Cerbi.Tests
 {
     public class CompositeLoggerProviderTests
     {
-        private class DummyProvider : ILoggerProvider
+        private class DummyProvider : ILoggerProvider, IDisposable
         {
             public readonly Mock<ILogger> MockLogger = new Mock<ILogger>();
+            public bool Disposed { get; private set; }
 
-            public ILogger CreateLogger(string categoryName)
-            {
-                return MockLogger.Object;
-            }
-
-            public void Dispose() { /* no-op */ }
+            public ILogger CreateLogger(string categoryName) => MockLogger.Object;
+            public void Dispose() { Disposed = true; }
         }
 
         [Fact]
@@ -113,6 +110,19 @@ namespace Cerbi.Tests
             // Assert: disposing the composite scope calls Dispose() on both inner scopes
             mockScope1.Verify(x => x.Dispose(), Times.Once);
             mockScope2.Verify(x => x.Dispose(), Times.Once);
+        }
+
+        [Fact]
+        public void Dispose_Disposes_All_Inner_Providers()
+        {
+            var provA = new DummyProvider();
+            var provB = new DummyProvider();
+            var compositeProv = new CompositeLoggerProvider(new[] { provA, provB });
+
+            compositeProv.Dispose();
+
+            Assert.True(provA.Disposed);
+            Assert.True(provB.Disposed);
         }
     }
 }
