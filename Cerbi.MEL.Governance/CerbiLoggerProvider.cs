@@ -1,6 +1,8 @@
 ﻿using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using System;
+using System.Reflection;
 
 namespace Cerbi
 {
@@ -29,8 +31,17 @@ namespace Cerbi
             // Ask the “real” console sink to create its ILogger for this category:
             var innerLogger = _consoleProvider.CreateLogger(categoryName);
 
-            // Wrap that console‐logger in your CerbiGovernanceLogger:
-            return new CerbiGovernanceLogger(innerLogger, _validator, _defaultTopic);
+            // Try to resolve a topic from the category type name (if it's a type full name)
+            string? categoryTopic = null;
+            var categoryType = Type.GetType(categoryName, throwOnError: false);
+            if (categoryType != null)
+            {
+                var attr = categoryType.GetCustomAttribute<CerbiTopicAttribute>(inherit: true);
+                if (attr != null) categoryTopic = attr.TopicName;
+            }
+
+            // Wrap that console‐logger in your CerbiGovernanceLogger and pass category Topic
+            return new CerbiGovernanceLogger(innerLogger, _validator, _defaultTopic, categoryTopic);
         }
 
         public void Dispose()

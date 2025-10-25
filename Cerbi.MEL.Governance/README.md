@@ -193,6 +193,35 @@ No outbound calls—everything runs in‐process against your JSON file.
 
 ---
 
+## Performance and benchmarks
+
+A small benchmark project is included to measure logging hot-paths.
+
+Run locally (from repo root):
+
+* `dotnet restore`
+* `dotnet build -c Release BenchmarkSuite1/BenchmarkSuite1.csproj`
+* `dotnet run -c Release --project BenchmarkSuite1 -- --list tree`
+* Run specific benchmark:
+  * `dotnet run -c Release --project BenchmarkSuite1 -- --filter "*AttributeTopic*"`
+
+Notes:
+* The `CPUUsageDiagnoser` attribute is stubbed; it’s safe to run with or without the real diagnoser installed.
+* PowerShell users should keep the filter quoted.
+
+---
+
+## Further optimization options (advanced)
+
+These changes can reduce allocations and CPU in heavy logging scenarios:
+
+* Cache attribute-topic lookup per declaring type (or per logger category) so repeated calls avoid walking the stack.
+* Replace `ExtractFields` `ToDictionary` with a manual copy into a pre-sized `Dictionary<string, object>`.
+
+These can be layered without changing the public API.
+
+---
+
 ## 🔗 Related Projects
 
 * 🌐 [CerbiStream](https://github.com/Zeroshi/Cerbi-CerbiStream) — Core logging library

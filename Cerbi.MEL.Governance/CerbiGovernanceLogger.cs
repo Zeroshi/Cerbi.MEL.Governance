@@ -18,6 +18,7 @@ namespace Cerbi
         private readonly ILogger _inner;
         private readonly RuntimeGovernanceValidator _validator;
         private readonly string _defaultTopic;
+        private readonly string? _categoryTopic; // resolved once by provider from the logger category type
 
         public CerbiGovernanceLogger(
             ILogger inner,
@@ -27,6 +28,17 @@ namespace Cerbi
             _inner = inner;
             _validator = validator;
             _defaultTopic = defaultTopic ?? string.Empty;
+        }
+
+        // New overload that accepts a category-level topic (preferred to avoid StackTrace on hot path)
+        public CerbiGovernanceLogger(
+            ILogger inner,
+            RuntimeGovernanceValidator validator,
+            string defaultTopic,
+            string? categoryTopic)
+            : this(inner, validator, defaultTopic)
+        {
+            _categoryTopic = string.IsNullOrWhiteSpace(categoryTopic) ? null : categoryTopic;
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -42,29 +54,33 @@ namespace Cerbi
             Exception? exception,
             Func<TState, Exception?, string> formatter)
         {
-            // 1) Determine Cerbi topic (attribute‐based or fallback):
-            var topicFromAttribute = TryResolveTopic();
-            var topic = !string.IsNullOrWhiteSpace(topicFromAttribute)
+            //1) Determine Cerbi topic (prefer category-level resolution; otherwise attribute; otherwise fallback):
+            string? topic = _categoryTopic;
+            if (string.IsNullOrWhiteSpace(topic))
+            {
+                var topicFromAttribute = TryResolveTopic();
+                topic = !string.IsNullOrWhiteSpace(topicFromAttribute)
                         ? topicFromAttribute!
                         : _defaultTopic;
+            }
 
-            // 2) If no topic at all, delegate directly—no Cerbi enrichment:
+            //2) If no topic at all, delegate directly—no Cerbi enrichment:
             if (string.IsNullOrWhiteSpace(topic))
             {
                 _inner.Log(logLevel, eventId, state, exception, formatter);
                 return;
             }
 
-            // 3) Extract structured fields from “state” if possible:
+            //3) Extract structured fields from “state” if possible:
             var fields = ExtractFields(state);
 
-            // 4) Inject the “CerbiTopic” so the validator knows which profile to use:
+            //4) Inject the “CerbiTopic” so the validator knows which profile to use:
             fields["CerbiTopic"] = topic;
 
-            // 5) Run governance‐validation:
+            //5) Run governance‐validation:
             var validated = _validator.Validate(fields);
 
-            // 6) If there are violations, record them; otherwise record “enforced”:
+            //6) If there are violations, record them; otherwise record “enforced”:
             bool hasViolation = false;
             if (validated.TryGetValue("GovernanceViolations", out var v)
                 && v is IEnumerable<string> violations
@@ -82,10 +98,10 @@ namespace Cerbi
                 fields["GovernanceMode"] = "Strict";
             }
 
-            // 7a) Always log the original message exactly as the caller wrote it:
+            //7a) Always log the original message exactly as the caller wrote it:
             _inner.Log(logLevel, eventId, state, exception, formatter);
 
-            // 7b) Only if there was at least one violation, serialize “fields” to JSON and log it:
+            //7b) Only if there was at least one violation, serialize “fields” to JSON and log it:
             if (hasViolation)
             {
                 string jsonPayload = JsonSerializer.Serialize(fields);
