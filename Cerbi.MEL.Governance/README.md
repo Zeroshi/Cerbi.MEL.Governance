@@ -288,20 +288,46 @@ Examples:
 
 ---
 
-## 🔗 Related Projects
+## 9) Performance
 
-* 🌐 [CerbiStream](https://github.com/Zeroshi/Cerbi-CerbiStream) — Core logging library
-* ⚙️ [Cerbi.Serilog.Governance](https://www.nuget.org/packages/Cerbi.Serilog.Governance)
-* 🔧 [Cerbi.Governance.Runtime](https://www.nuget.org/packages/Cerbi.Governance.Runtime) — shared runtime logic
-* 📘 [Cerbi Docs](https://cerbi.io/docs)
+- Designed for in-process validation with predictable overhead.
+- Works on structured state and message templates to minimize allocations.
+- See the `BenchmarkSuite1` project in this repository for scenarios and measurements.
+
+Tip: Place Cerbi at the start of the logging pipeline to avoid downstream cost on non-compliant events.
 
 ---
 
-### Summary of fixes
+## 10) FAQ
 
-1. **Changed namespace** for `AddCerbiGovernance` to `using Cerbi;`
-2. **Adjusted features** to say “only emit a secondary JSON payload”
-3. **Clarified Relaxed mode** instructions (no built‐in `Relax()` yet)
-4. **Removed outdated “2,000 downloads” line**
+- Does this replace Serilog/NLog/OTEL?
+  - No. It complements them by adding governance. Keep your sinks/exporters; Cerbi enforces policy upstream.
+- What happens on violation?
+  - Relaxed: event is emitted with violation tags and redacted values.
+  - Strict: event may be blocked or downgraded based on policy.
+- Can I define required/forbidden fields?
+  - Yes, via governance profile configuration and settings.
+- Can I load profiles dynamically?
+  - Yes; load from JSON at startup, environment-specific configuration, or integrate with CerbiShield / Governance.Runtime for updates.
+- Will message templates be updated?
+  - Redaction targets structured properties and, when possible, the rendered message.
+- How do I integrate with OTEL Collector?
+  - Keep Cerbi in the MEL pipeline and add OTLP exporters. Events arrive governed at the Collector.
+- Can I tag events with domain context?
+  - Use `CerbiTopicAttribute` or include a `Topic` property in structured state.
 
-With these edits, your README on NuGet (v1.0.35) will be accurate, clear, and free of compile errors.
+---
+
+## 11) Why not just use Serilog/NLog/OTEL alone?
+
+They handle transport, storage, and query. They do not enforce enterprise governance (required/forbidden fields, PII/PHI redaction, policy validation, compile-time plus runtime consistency). Cerbi adds that governance layer so your logs are safe, compliant, and ML-ready—before they reach Seq, ELK/OpenSearch, Loki, Graylog, VictoriaLogs/VictoriaMetrics, TelemetryHarbor, Dozzle, or the OTEL Collector.
+
+---
+
+## 12) Contributing and Links
+
+- Website: https://cerbi.io
+- Repo: https://github.com/Zeroshi/Cerbi.MEL.Governance
+- Related projects: CerbiStream, GovernanceAnalyzer, Governance.Runtime, CerbiShield, CerbIQ, CerbiSense (see Cerbi site/org)
+
+If this helps govern production logs, please star the repo and open issues/PRs with tests.
