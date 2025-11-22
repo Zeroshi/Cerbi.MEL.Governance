@@ -1,7 +1,6 @@
 ﻿using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -12,17 +11,6 @@ using System.Threading;
 
 namespace Cerbi
 {
-    /// <summary>
-    /// Wraps the real ILogger (in our case, the single console sink) and emits:
-    /// • Always: the original message exactly as the caller wrote it
-    /// • If (and only if) there is at least one violation: a second JSON‐only line
-    /// Optimizations:
-    /// • Fast attribute-topic resolution via category name and caching
-    /// • Single-shot StackTrace fallback per instance (cached)
-    /// • Lower-allocation ExtractFields
-    /// • Optional short-circuit when governance disabled
-    /// • Optional scope-based topic override
-    /// </summary>
     public class CerbiGovernanceLogger : ILogger
     {
         private static readonly ConcurrentDictionary<string, string?> CategoryTopicCache = new();
@@ -37,34 +25,25 @@ namespace Cerbi
         private readonly Func<bool>? _isGovernanceEnabled;
         private string? _cachedStackTraceTopic; // empty string means "none"
         private bool _stackTraceChecked;
+        private readonly ScoreShipper _scoreShipper;
+        private readonly CerbiGovernanceMELSettings _settings;
 
-        public CerbiGovernanceLogger(
-            ILogger inner,
-            RuntimeGovernanceValidator validator,
-            string defaultTopic)
-            : this(inner, validator, defaultTopic, categoryName: null, isGovernanceEnabled: null)
-        { }
-
-        public CerbiGovernanceLogger(
-            ILogger inner,
-            RuntimeGovernanceValidator validator,
-            string defaultTopic,
-            string? categoryName)
-            : this(inner, validator, defaultTopic, categoryName, isGovernanceEnabled: null)
-        { }
-
-        public CerbiGovernanceLogger(
-            ILogger inner,
-            RuntimeGovernanceValidator validator,
-            string defaultTopic,
-            string? categoryName,
-            Func<bool>? isGovernanceEnabled)
+        // Compact constructor chain
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic)
+            : this(inner, validator, defaultTopic, null, null, null, null) { }
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName)
+            : this(inner, validator, defaultTopic, categoryName, null, null, null) { }
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName, Func<bool>? isGovernanceEnabled)
+            : this(inner, validator, defaultTopic, categoryName, isGovernanceEnabled, null, null) { }
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName, Func<bool>? isGovernanceEnabled, ScoreShipper? shipper, CerbiGovernanceMELSettings? settings)
         {
             _inner = inner;
             _validator = validator;
             _defaultTopic = defaultTopic ?? string.Empty;
             _categoryName = categoryName ?? string.Empty;
             _isGovernanceEnabled = isGovernanceEnabled;
+            _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), new ScoreShippingOptions());
+            _settings = settings ?? new CerbiGovernanceMELSettings();
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -81,15 +60,9 @@ namespace Cerbi
             return new TopicScopeReset(innerScope, prev);
         }
 
-        public bool IsEnabled(LogLevel logLevel)
-            => _inner.IsEnabled(logLevel);
+        public bool IsEnabled(LogLevel logLevel) => _inner.IsEnabled(logLevel);
 
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter)
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
             //0) If governance is disabled, delegate directly
             if (_isGovernanceEnabled != null && !_isGovernanceEnabled())
@@ -165,6 +138,39 @@ namespace Cerbi
                     (msg, ex) => msg! // simple formatter: just prints the JSON string
                 );
             }
+
+            // Score shipping extraction (non-blocking)
+            TryShipScore(fields);
+        }
+
+        private void TryShipScore(Dictionary<string, object> fields)
+        {
+            if (!_settings.ScoreShipping.Enabled || !_settings.ScoreShipping.LicenseAllowsScoring) return;
+            if (!fields.TryGetValue("GovernanceScoreImpact", out var rawImpact)) return;
+            if (!double.TryParse(rawImpact?.ToString(), out var impact)) return;
+            var relaxed = fields.TryGetValue("GovernanceRelaxed", out var r) && r is bool b && b;
+            GovernanceViolationSummary[] summaries = Array.Empty<GovernanceViolationSummary>();
+            if (fields.TryGetValue("GovernanceViolations", out var rawViolations))
+            {
+                if (rawViolations is IEnumerable<string> vs)
+                {
+                    summaries = vs.Select(x => new GovernanceViolationSummary { Code = x, Rule = x }).ToArray();
+                }
+                else if (rawViolations is IEnumerable<object> objs)
+                {
+                    summaries = objs.Select(o => new GovernanceViolationSummary { Code = o?.ToString() ?? string.Empty, Rule = o?.ToString() ?? string.Empty }).ToArray();
+                }
+            }
+            var ev = new GovernanceScoreEvent
+            {
+                AppName = _settings.AppName,
+                Environment = _settings.Environment,
+                Timestamp = DateTimeOffset.UtcNow,
+                ScoreImpact = impact,
+                GovernanceRelaxed = relaxed,
+                Violations = summaries
+            };
+            _scoreShipper.Enqueue(ev);
         }
 
         private static IEnumerable<string> EnumerateWithFirst(IEnumerable<string> source, string first)
@@ -258,7 +264,7 @@ namespace Cerbi
             {
                 if (kvps is ICollection<KeyValuePair<string, object>> coll)
                 {
-                    var dict = new Dictionary<string, object>(coll.Count +4, StringComparer.Ordinal);
+                    var dict = new Dictionary<string, object>(coll.Count + 4, StringComparer.Ordinal);
                     foreach (var kv in coll)
                         dict[kv.Key] = kv.Value!;
                     return dict;

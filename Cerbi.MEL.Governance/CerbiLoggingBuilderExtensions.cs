@@ -41,12 +41,12 @@ namespace Cerbi
             {
                 // a. Resolve the one-and-only ConsoleLoggerProvider
                 var consoleProv = sp.GetRequiredService<ConsoleLoggerProvider>();
-
                 // b. Wrap it in our CerbiLoggerProvider
                 return new CerbiLoggerProvider(
                     consoleProv,     // the one Console sink
                     validator,       // shared validator
-                    settings.Profile // fallback profile name
+                    settings.Profile, // fallback profile name
+                    settings
                 );
             });
 

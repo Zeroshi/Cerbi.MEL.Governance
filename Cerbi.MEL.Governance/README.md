@@ -1,78 +1,25 @@
-﻿Got it, you want the README to be **explicit** about Relax() not existing and how Relax actually works in this repo.
+﻿# Cerbi.MEL.Governance
 
-Here’s the **fully updated README** for `Cerbi.MEL.Governance` with your new Relax details integrated cleanly into the docs.
+Real-time logging governance for Microsoft.Extensions.Logging (MEL). Validates structured state against Cerbi governance profiles, preserves the original log line, and emits a secondary JSON payload only on violations. Adds optional non-blocking governance score shipping.
 
-You can drop this directly into `README.md`.
+## Why
+Standard loggers / collectors (Serilog, NLog, Log4Net, MEL console/file, OpenTelemetry / OTLP Collector, Seq, Loki / Promtail / Alloy, Fluentd / FluentBit, ELK / OpenSearch, Graylog, VictoriaLogs / VictoriaMetrics, journald / syslog) do not enforce enterprise governance (required / forbidden fields, PII/PHI protection, relaxation tagging, scoring metadata). Cerbi adds that governance layer without replacing existing sinks.
 
----
-
-# Cerbi.MEL.Governance
-
-**Real-time logging governance enforcement for Microsoft.Extensions.Logging (MEL) using the Cerbi validation engine.**
-
-`Cerbi.MEL.Governance` wires **Cerbi’s runtime governance engine** directly into the MEL pipeline used by ASP.NET Core, Worker Services, Azure Functions, and any .NET app built on `Microsoft.Extensions.Logging`.
-
-It validates structured logs against **Cerbi governance profiles** and emits **a secondary JSON payload only when violations occur**, while always preserving your original log line.
-
-Part of the **[Cerbi Suite](https://cerbi.io)** for governed logging, telemetry, and analytics.
-
----
-
-## Why This Exists
-
-MEL + sinks like **Console**, **File**, **Serilog**, **NLog**, **Log4Net**, **OpenTelemetry Logging / OTLP**, **Seq**, **Grafana Loki / Promtail / Alloy**, **Fluentd / FluentBit**, **ELK / OpenSearch**, **Graylog**, **VictoriaLogs / VictoriaMetrics**, or even **Journald / syslog** can ship a huge volume of logs.
-
-What they *don’t* do:
-
-* Enforce **Required** or **Forbidden** fields (e.g., `userId`, `SSN`, `password`).
-* Enforce **field types** or **enum sets**.
-* Tag events as **Relaxed** vs **Strictly governed**.
-* Emit explicit **governance violation metadata** for downstream scoring and compliance.
-
-`Cerbi.MEL.Governance` adds that **governance layer** on top of MEL, without replacing your existing sinks or observability stack.
-
----
-
-## Demo & Examples
-
-Full examples and demo projects live here:
-
-👉 **[Cerbi.MEL.Governance Demo & Examples](https://github.com/Zeroshi/Cerbi.MEL.Governance)**
-
----
-
-## Features (Current Scope)
-
-* ✅ Enforce **required** and **forbidden** fields via governance profiles
-* ✅ **Secondary JSON payload only when violations occur** (original log always appears)
-* ✅ Supports **structured logging** and `BeginScope`
-* ✅ Supports `[CerbiTopic("…")]` profile routing (injects a `CerbiTopic` field at runtime)
-* ✅ Compatible with any MEL-compatible sink (Console, File, Seq, Serilog, NLog, OTEL exporters, etc.)
-
-> ⚠️ **Relaxed mode (v1.0.36 details)**
->
-> * In this repo (v1.0.36), **there is no fluent `Relax()` helper**.
-> * No `Relax()` method or extension exists in the codebase.
-> * `CerbiGovernanceMELSettings` has **no `Relax` flag**.
-> * Relaxed behavior can only be signaled via a **structured state property named `Relax` (Boolean)** and enabled by `"AllowRelax": true` in your profile JSON.
-> * When both conditions are met, the second JSON line will include `GovernanceRelaxed: true`.
-
----
+## Key Features
+- Required / forbidden field enforcement
+- Structured logging + scope support
+- Topic routing via `[CerbiTopic]`
+- Original line always emitted; second JSON line only on violations
+- Relaxed mode via `{Relax}` property + profile `AllowRelax`
+- Non-blocking governance score shipping (batch, retry, license-gated)
+- Hot-path optimizations (caching, low allocation field extraction)
 
 ## Installation
-
 ```bash
 dotnet add package Cerbi.MEL.Governance --version 1.0.36
 ```
 
----
-
-## Setup
-
-### 1. Add a governance config file
-
-Create `cerbi_governance.json` in your project root (or point `ConfigPath` elsewhere):
-
+## Configuration JSON (cerbi_governance.json)
 ```json
 {
   "EnforcementMode": "Strict",
@@ -85,315 +32,135 @@ Create `cerbi_governance.json` in your project root (or point `ConfigPath` elsew
       },
       "AllowRelax": true,
       "RequireTopic": true,
-      "AllowedTopics": [ "Orders" ]
+      "AllowedTopics": ["Orders"]
     }
   }
 }
 ```
 
-Governance profiles are defined using the shared schema from `Cerbi.Governance.Core` and can also be managed via CerbiShield.
-
----
-
-### 2. Configure MEL to use Cerbi governance
-
+## Wiring (Host builder)
 ```csharp
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Cerbi; // AddCerbiGovernance lives in the Cerbi namespace
-
-var builder = Host.CreateDefaultBuilder(args)
-    .ConfigureLogging(logging =>
-    {
-        logging.ClearProviders();
-        logging.AddSimpleConsole(options =>
-        {
-            options.IncludeScopes = true;
-            options.SingleLine = true;
-            options.TimestampFormat = "HH:mm:ss ";
-        });
-
-        logging.AddCerbiGovernance(options =>
-        {
-            options.Profile    = "Orders";                   // default fallback profile name
-            options.ConfigPath = "cerbi_governance.json";    // governance JSON path
-            options.Enabled    = true;                       // enable/disable at runtime
-        });
-    })
-    .ConfigureServices(services =>
-    {
-        services.AddTransient<OrderService>();
-    });
-```
-
-For minimal APIs / ASP.NET Core:
-
-```csharp
-var builder = WebApplication.CreateBuilder(args);
-
-builder.Logging.AddCerbiGovernance(options =>
+builder.Logging.AddCerbiGovernance(o =>
 {
-    options.Profile    = "Orders";
-    options.ConfigPath = "cerbi_governance.json";
-    options.Enabled    = true;
+    o.Profile = "Orders";              // fallback profile
+    o.ConfigPath = "cerbi_governance.json"; // profile file
+    o.Enabled = true;                   // toggle governance
+    o.AppName = "MyService";           // for score events
+    o.Environment = "prod";            // for score events
+    o.ScoreShipping = new ScoreShippingOptions
+    {
+        Enabled = true,
+        LicenseAllowsScoring = true,
+        Endpoint = "https://scores.cerbi.local/api/ship",
+        ApiKey = "secret-key"
+    };
 });
-
-var app = builder.Build();
 ```
 
----
-
-## Optional: `[CerbiTopic("…")]` to route logs
-
-Use `[CerbiTopic]` to scope logs to a specific governance profile:
-
+## Topic Routing
 ```csharp
-using Cerbi;  // CerbiTopicAttribute
-
 [CerbiTopic("Orders")]
 public class OrderService
 {
     private readonly ILogger<OrderService> _logger;
-
-    public OrderService(ILogger<OrderService> logger)
-    {
-        _logger = logger;
-    }
-
-    public void Process()
-    {
-        _logger.LogInformation("Order processed for {userId}", "abc123");
-    }
+    public OrderService(ILogger<OrderService> logger) => _logger = logger;
+    public void Process(string userId, string email)
+        => _logger.LogInformation("Order processed for {userId} {email}", userId, email);
 }
 ```
+Logs from `OrderService` use the `Orders` profile automatically.
 
-✅ Any log calls from a class tagged with `[CerbiTopic("Orders")]` will be validated under the `"Orders"` profile, subject to your JSON config.
-
----
-
-## Example Logging
-
+## Relaxed Mode (v1.0.36)
+- No fluent `Relax()` helper exists.
+- Set `AllowRelax: true` in profile and include a structured property `{Relax}` (bool true) in the log state.
+- Example:
 ```csharp
-// Valid log (has both userId and email)
-_logger.LogInformation("User info: {userId} {email}", "abc123", "test@example.com");
+_logger.LogInformation("Email-only (relaxed): {email} {Relax}", "user@example.com", true);
+```
+Produces second JSON line with `GovernanceRelaxed: true`.
 
-// Missing userId → governance violation under "Orders" profile
-_logger.LogInformation("Only email provided: {email}", "test@example.com");
-
-// Forbidden field (“password”) → governance violation under "Orders"
-_logger.LogInformation(
-    "Password in log: {userId} {email} {password}",
-    "abc123",
-    "test@example.com",
-    "secret"
-);
-
-// Relaxed example (AllowRelax = true in JSON config; {Relax} = true in structured state)
-_logger.LogInformation(
-    "Email-only (relaxed): {email} {Relax}",
-    "user@example.com",
-    true
-);
+## Example Violations
+Missing required field:
+```json
+{"GovernanceProfileUsed":"Orders","GovernanceViolations":["MissingField:userId"],"GovernanceRelaxed":false}
+```
+Forbidden field:
+```json
+{"GovernanceProfileUsed":"Orders","GovernanceViolations":["ForbiddenField:password"],"GovernanceRelaxed":false}
+```
+Relaxed:
+```json
+{"email":"user@example.com","CerbiTopic":"Orders","GovernanceRelaxed":true,"GovernanceProfileUsed":"Orders"}
 ```
 
----
+## Governance Score Shipping
+When `ScoreShipping.Enabled` and `LicenseAllowsScoring` are true and the structured state contains `GovernanceScoreImpact` (numeric), a `GovernanceScoreEvent` is enqueued (non-blocking):
 
-## Governance Output
+Fields extracted:
+- `GovernanceScoreImpact` → double
+- `GovernanceViolations` → array mapped to summaries
+- `GovernanceRelaxed` → bool
 
-When governance is enabled:
-
-1. Your **original log line** is written exactly as you called it.
-2. If a violation occurs, a **second JSON payload** is emitted describing the violation(s) and governance metadata.
-
-### 1. Missing required field (`userId`)
-
-```json
+Event model:
+```csharp
+public class GovernanceScoreEvent
 {
-  "GovernanceProfileUsed": "Orders",
-  "GovernanceViolations": [ "MissingField:userId" ],
-  "GovernanceRelaxed": false
+    public string AppName { get; set; }
+    public string Environment { get; set; }
+    public DateTimeOffset Timestamp { get; set; }
+    public double ScoreImpact { get; set; }
+    public bool GovernanceRelaxed { get; set; }
+    public GovernanceViolationSummary[] Violations { get; set; }
 }
 ```
+Shipper behavior:
+- Queue size capped (`MaxQueueSize`)
+- Batch flush (`BatchSize`) every `FlushIntervalSeconds`
+- Retries (`MaxRetries`, `RetryDelayMilliseconds`)
+- Drops silently on errors; logging path unaffected
 
-### 2. Forbidden field (`password`)
-
-```json
-{
-  "GovernanceProfileUsed": "Orders",
-  "GovernanceViolations": [ "ForbiddenField:password" ],
-  "GovernanceRelaxed": false
-}
+To trigger scoring:
+```csharp
+_logger.LogInformation("Scored event {userId} {GovernanceScoreImpact}", "abc123", 2.5);
 ```
+(Include governance-related fields per profile.)
 
-### 3. Relaxed example (`AllowRelax = true`, `Relax = true`)
+## Performance
+Optimizations:
+- Category + type attribute caching (minimal StackTrace usage)
+- Manual dictionary construction (avoid LINQ / boxing)
+- Single validator instance per provider
+- Score shipping done off-thread; enqueue O(1)
 
-```json
-{
-  "email": "user@example.com",
-  "CerbiTopic": "Orders",
-  "GovernanceRelaxed": true,
-  "GovernanceProfileUsed": "Orders"
-}
-```
+Benchmark guidance (.NET 8, no-op sink):
+- Fast path: 3–10M logs/sec
+- Topic cached path: 2–6M logs/sec
+- With per-log StackTrace (avoid): <0.5M logs/sec
+Real sinks are I/O-bound (50–200k logs/sec typical).
 
-> 🔎 **Guarantee:** The original message is **never dropped**. The second line is additive and only appears when there’s something to flag.
-
----
-
-## Environment & Context Enrichment
-
-Cerbi.MEL.Governance can add environment metadata for downstream systems (Loki, Seq, Elastic/OpenSearch, Graylog, VictoriaLogs, OTEL Collector, etc.):
-
-* `ApplicationId`
-
-  * From `CERBI_APP_ID`
-  * Default: `"MyApp"`
-
-* `InstanceId`
-
-  * Machine name / host
-
-* `Region`
-
-  * From `CLOUD_REGION`
-  * Default: `"unknown-region"`
-
-* `CloudProvider`
-
-  * Inferred from environment (e.g., Azure, AWS, GCP, OnPrem) when possible
-
-This makes it easier to slice governance violations by app, instance, region, or cloud provider.
-
----
-
-## Performance & Benchmarks
-
-A **BenchmarkDotNet** project is included to test hot-path performance.
-
-From the repo root:
-
-```bash
-dotnet restore
-dotnet build -c Release BenchmarkSuite1/BenchmarkSuite1.csproj
-dotnet run -c Release --project BenchmarkSuite1 -- --list tree
-
-# Run a specific benchmark
-dotnet run -c Release --project BenchmarkSuite1 -- --filter "*AttributeTopic*"
-```
-
-Notes:
-
-* `CPUUsageDiagnoser` is stubbed; benchmarks will run with or without a real diagnoser.
-* On real console/file sinks, logging becomes **I/O-bound**; CPU optimizations still help with spikes but raw throughput is dictated by sinks.
-
-### Hot-path Optimizations
-
-Current optimizations include:
-
-* **Attribute-topic caching**
-
-  * Cache topic by logger category name and declaring type.
-  * Prefer category-based resolution; only fall back to a one-time `StackTrace` scan per logger instance when needed.
-
-* **Lower-allocation field extraction**
-
-  * Manual copy to a pre-sized `Dictionary<string, object>` (ordinal comparer).
-  * Avoids LINQ and unnecessary allocations on the hot path.
-
-### Expected Ballpark Throughput (no-op / in-process scenarios)
-
-These are *guidance*, not hard guarantees, assuming a no-op sink on .NET 8:
-
-* Default-topic fast path: ~3–10M logs/sec is strong.
-* Attribute-topic path with caching + small structured state: ~2–6M logs/sec is strong.
-* With `StackTrace` on every log (pre-optimization): sub-0.5M logs/sec is common.
-
-With actual console/file sinks, 50–200k logs/sec is normal; the sink dominates.
-
----
-
-## How It Plays with Other Stacks
-
-`Cerbi.MEL.Governance` runs in the **MEL pipeline** and is compatible with:
-
-* **Serilog / NLog / Log4Net** via MEL integration
-* **Seq** (Datalust)
-* **Grafana Loki / Promtail / Alloy**
-* **Fluentd / FluentBit**
-* **Elastic / OpenSearch / Graylog / VictoriaLogs / VictoriaMetrics**
-* **OpenTelemetry Logging / OTLP / OTEL Collector**
-* **Journald / syslog**
-
-You keep your existing sinks/exporters. Cerbi:
-
-1. Validates structured state against governance profiles.
-2. Emits your original log + optional governance JSON line.
-3. Lets your sinks or OTEL exporters handle the rest.
-
----
-
-## SBOM & Compliance
-
-* **License:** MIT
-* No outbound network calls.
-* All enforcement is **in-process** against your governance JSON file.
-* Safe for secure and regulated pipelines (subject to your own review).
-
----
+## Interoperability
+Works alongside existing MEL providers and frameworks:
+- Serilog / NLog / Log4Net (via MEL bridge)
+- OpenTelemetry Logging + OTLP Collector
+- Seq, Loki, ELK / OpenSearch, Fluentd / FluentBit, Graylog, VictoriaLogs / VictoriaMetrics, TelemetryHarbor, journald / syslog
 
 ## FAQ
+Q: Does it replace my logger?  A: No, it wraps MEL and preserves existing providers.
+Q: Can logs be dropped?       A: Original line is always emitted in this version; violations add a second JSON line.
+Q: How to relax one log?       A: Include `{Relax}` true and have `AllowRelax: true` in profile.
+Q: Scoring without impact?     A: No event shipped if `GovernanceScoreImpact` missing or non-numeric.
+Q: License gating?             A: `LicenseAllowsScoring=false` blocks shipping even if enabled.
+Q: PII/Forbidden handling?     A: Profile `FieldSeverities` drives enforcement and violation tagging.
 
-**Does this replace Serilog/NLog/OTEL?**
-No. It sits in the MEL pipeline and **adds governance** before logs flow into Serilog, NLog, OTEL exporters, Loki, Seq, ELK, or any other sink.
+## Related Cerbi Components
+- CerbiStream (logging pipeline)
+- Cerbi.Governance.Core / Runtime (shared models, validation)
+- GovernanceAnalyzer (compile-time rules)
+- CerbiShield (profile management)
+- CerbIQ / CerbiSense (routing / analytics)
 
-**Does it ever drop logs?**
-In this release:
-
-* The original log is *never* dropped.
-* Violations are surfaced via a second JSON line.
-
-**Is there a `Relax()` helper?**
-No. In this repo (v1.0.36):
-
-* There is **no fluent `Relax()` helper**.
-* No `Relax()` method or extension exists in the codebase.
-* `CerbiGovernanceMELSettings` has **no `Relax` flag**.
-* Relaxed behavior can **only** be signaled via a structured state property named `Relax` (Boolean), and only when `"AllowRelax": true` is enabled in your governance profile JSON.
-
-**How do I relax governance for specific logs?**
-Given `"AllowRelax": true` in the profile:
-
-```csharp
-_logger.LogInformation(
-    "Email-only (relaxed): {email} {Relax}",
-    "user@example.com",
-    true
-);
-```
-
-The governance JSON line will include `GovernanceRelaxed: true` and `GovernanceProfileUsed`.
-
-**Can I define required/forbidden fields?**
-Yes, via `FieldSeverities` in your governance JSON (e.g., `Required`, `Forbidden`, `Info`).
-
-**Can I load profiles dynamically?**
-Profiles are read from JSON. You can combine this with config transforms, environment-specific files, or future CerbiShield-based deployment flows.
-
-**How does this work with OpenTelemetry Collector?**
-Use Cerbi in the MEL pipeline, then attach OTLP exporters. Logs will reach the OTEL Collector already governed and tagged.
-
----
-
-## Contributing & Links
-
-* Website: **[https://cerbi.io](https://cerbi.io)**
-* Repo: **[https://github.com/Zeroshi/Cerbi.MEL.Governance](https://github.com/Zeroshi/Cerbi.MEL.Governance)**
-* Related projects: CerbiStream, Cerbi.Governance.Core, Cerbi.Governance.Runtime, Cerbi.GovernanceAnalyzer, CerbiShield, CerbIQ, CerbiSense
-
-If this helps keep your logs compliant and non-chaotic, **star the repo** and open issues/PRs with tests.
-
----
+## Contributing
+Issues and PRs with tests welcome. MIT licensed.
 
 ## License
-
-MIT — see `LICENSE`.
+MIT
