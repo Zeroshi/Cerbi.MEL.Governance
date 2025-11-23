@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace Cerbi
 {
-    public class CerbiGovernanceLogger : ILogger
+    public class CerbiGovernanceLogger : ILogger, ISupportExternalScope
     {
         private static readonly ConcurrentDictionary<string, string?> CategoryTopicCache = new();
         private static readonly ConcurrentDictionary<Type, string?> TypeTopicCache = new();
@@ -27,6 +27,7 @@ namespace Cerbi
         private bool _stackTraceChecked;
         private readonly ScoreShipper _scoreShipper;
         private readonly CerbiGovernanceMELSettings _settings;
+        private IExternalScopeProvider? _scopeProvider;
 
         // Compact constructor chain
         public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic)
@@ -56,6 +57,10 @@ namespace Cerbi
                 ScopeTopic.Value = scope.Topic;
             }
             var innerScope = _inner.BeginScope(state);
+            if (_scopeProvider != null)
+            {
+                innerScope = new CompositeScope(innerScope, _scopeProvider.Push(state));
+            }
             if (prev == null && !(state is CerbiTopicScope)) return innerScope;
             return new TopicScopeReset(innerScope, prev);
         }
@@ -64,8 +69,20 @@ namespace Cerbi
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
         {
-            //0) If governance is disabled, delegate directly
-            if (_isGovernanceEnabled != null && !_isGovernanceEnabled())
+            // 0) If governance is disabled or mode is Off, delegate directly
+            if ((_isGovernanceEnabled != null && !_isGovernanceEnabled()) || _settings.EnforcementMode == GovernanceEnforcementMode.Off)
+            {
+                _inner.Log(logLevel, eventId, state, exception, formatter);
+                return;
+            }
+
+            // 0a) Respect MinValidationLevel and SamplingRate
+            if (logLevel < _settings.MinValidationLevel)
+            {
+                _inner.Log(logLevel, eventId, state, exception, formatter);
+                return;
+            }
+            if (_settings.SamplingRate < 1.0 && Random.Shared.NextDouble() > _settings.SamplingRate)
             {
                 _inner.Log(logLevel, eventId, state, exception, formatter);
                 return;
@@ -95,12 +112,11 @@ namespace Cerbi
             //5) Run governance-validation
             var validated = _validator.Validate(fields);
 
-            //6) If there are violations, record them; otherwise record “enforced”
+            //6) If there are violations, record them; otherwise record status depending on mode
             bool hasViolation = false;
             IEnumerable<string>? violationsEnum = null;
             if (validated.TryGetValue("GovernanceViolations", out var v) && v is IEnumerable<string> cand)
             {
-                // Avoid LINQ Any allocation; manual enumeration
                 using var e = cand.GetEnumerator();
                 if (e.MoveNext())
                 {
@@ -114,12 +130,16 @@ namespace Cerbi
                 fields["GovernanceViolations"] = violationsEnum!.ToArray();
                 fields["GovernanceRelaxed"] = false;
                 fields["GovernanceProfileUsed"] = topic;
+                fields["GovernanceMode"] = _settings.EnforcementMode.ToString();
             }
             else
             {
                 fields["GovernanceProfileUsed"] = topic;
-                fields["GovernanceEnforced"] = true;
-                fields["GovernanceMode"] = "Strict";
+                if (_settings.EnforcementMode == GovernanceEnforcementMode.Strict)
+                {
+                    fields["GovernanceEnforced"] = true;
+                }
+                fields["GovernanceMode"] = _settings.EnforcementMode.ToString();
             }
 
             //7a) Always log the original message exactly as the caller wrote it
@@ -128,19 +148,23 @@ namespace Cerbi
             //7b) Only if there was at least one violation, serialize “fields” to JSON and log it
             if (hasViolation)
             {
-                // Reuse serializer options to avoid repeated setup
                 string jsonPayload = JsonSerializer.Serialize(fields, JsonOpts);
                 _inner.Log(
-                    logLevel, // same severity
-                    eventId, // same EventId
-                    jsonPayload, // pass the JSON string as the “state”
+                    logLevel,
+                    eventId,
+                    jsonPayload,
                     exception,
-                    (msg, ex) => msg! // simple formatter: just prints the JSON string
+                    (msg, ex) => msg!
                 );
             }
 
             // Score shipping extraction (non-blocking)
             TryShipScore(fields);
+        }
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider)
+        {
+            _scopeProvider = scopeProvider;
         }
 
         private void TryShipScore(Dictionary<string, object> fields)
@@ -178,10 +202,9 @@ namespace Cerbi
             yield return first;
             foreach (var s in source)
             {
-                // We already yielded first; this duplicates first once, so skip the first element explicitly
                 if (ReferenceEquals(s, first) || (s != null && s.Equals(first)))
                 {
-                    first = null!; // ensure only the first match is skipped once
+                    first = null!;
                     continue;
                 }
                 yield return s;
@@ -212,7 +235,6 @@ namespace Cerbi
 
         private static string? ResolveTopicFromCategoryName(string categoryName)
         {
-            // Attempt direct type resolution by full name
             var type = Type.GetType(categoryName, throwOnError: false, ignoreCase: false)
                        ?? AppDomain.CurrentDomain.GetAssemblies()
                           .Select(a => a.GetType(categoryName, throwOnError: false, ignoreCase: false))
@@ -303,6 +325,21 @@ namespace Cerbi
             {
                 ScopeTopic.Value = _prev;
                 _inner?.Dispose();
+            }
+        }
+
+        private sealed class CompositeScope : IDisposable
+        {
+            private readonly IDisposable? _a;
+            private readonly IDisposable? _b;
+            public CompositeScope(IDisposable? a, IDisposable? b)
+            {
+                _a = a;
+                _b = b;
+            }
+            public void Dispose()
+            {
+                try { _a?.Dispose(); } finally { _b?.Dispose(); }
             }
         }
     }

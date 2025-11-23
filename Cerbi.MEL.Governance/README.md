@@ -19,6 +19,14 @@ Standard loggers / collectors (Serilog, NLog, Log4Net, MEL console/file, OpenTel
 dotnet add package Cerbi.MEL.Governance --version 1.0.36
 ```
 
+## Enforcement Modes and Controls
+- `EnforcementMode`: `Strict` (default), `Audit`, or `Off`.
+  - Strict: validate and tag success/violations; emit violation JSON lines when violations occur.
+  - Audit: validate and tag but do not change behavior beyond emitting violation JSON on violations.
+  - Off: skip validation fast-path.
+- `MinValidationLevel`: only validate at or above this MEL `LogLevel`.
+- `SamplingRate` (0.0–1.0): fraction of events validated.
+
 ## Configuration JSON (cerbi_governance.json)
 ```json
 {
@@ -40,11 +48,18 @@ dotnet add package Cerbi.MEL.Governance --version 1.0.36
 
 ## Wiring (Host builder)
 ```csharp
+// Program.cs / host builder
+builder.Logging.AddCerbiGovernance(builder.Configuration); // binds from "Cerbi:Governance" by default
+
+// or minimal manual configuration
 builder.Logging.AddCerbiGovernance(o =>
 {
     o.Profile = "Orders";              // fallback profile
     o.ConfigPath = "cerbi_governance.json"; // profile file
     o.Enabled = true;                   // toggle governance
+    o.EnforcementMode = GovernanceEnforcementMode.Strict; // Strict | Audit | Off
+    o.MinValidationLevel = LogLevel.Information;          // validate at/above this level
+    o.SamplingRate = 1.0;                                  // 0..1 sampling
     o.AppName = "MyService";           // for score events
     o.Environment = "prod";            // for score events
     o.ScoreShipping = new ScoreShippingOptions
@@ -55,6 +70,30 @@ builder.Logging.AddCerbiGovernance(o =>
         ApiKey = "secret-key"
     };
 });
+```
+
+### Optional configuration binding
+```json
+{
+  "Cerbi": {
+    "Governance": {
+      "Profile": "Orders",
+      "ConfigPath": "cerbi_governance.json",
+      "Enabled": true,
+      "EnforcementMode": "Strict",
+      "MinValidationLevel": "Information",
+      "SamplingRate": 1.0,
+      "AppName": "MyService",
+      "Environment": "prod",
+      "ScoreShipping": {
+        "Enabled": true,
+        "LicenseAllowsScoring": true,
+        "Endpoint": "https://scores.cerbi.local/api/ship",
+        "ApiKey": "secret-key"
+      }
+    }
+  }
+}
 ```
 
 ## Topic Routing
@@ -71,7 +110,6 @@ public class OrderService
 Logs from `OrderService` use the `Orders` profile automatically.
 
 ## Relaxed Mode (v1.0.36)
-- No fluent `Relax()` helper exists.
 - Set `AllowRelax: true` in profile and include a structured property `{Relax}` (bool true) in the log state.
 - Example:
 ```csharp
@@ -101,18 +139,6 @@ Fields extracted:
 - `GovernanceViolations` → array mapped to summaries
 - `GovernanceRelaxed` → bool
 
-Event model:
-```csharp
-public class GovernanceScoreEvent
-{
-    public string AppName { get; set; }
-    public string Environment { get; set; }
-    public DateTimeOffset Timestamp { get; set; }
-    public double ScoreImpact { get; set; }
-    public bool GovernanceRelaxed { get; set; }
-    public GovernanceViolationSummary[] Violations { get; set; }
-}
-```
 Shipper behavior:
 - Queue size capped (`MaxQueueSize`)
 - Batch flush (`BatchSize`) every `FlushIntervalSeconds`
@@ -123,7 +149,6 @@ To trigger scoring:
 ```csharp
 _logger.LogInformation("Scored event {userId} {GovernanceScoreImpact}", "abc123", 2.5);
 ```
-(Include governance-related fields per profile.)
 
 ## Performance
 Optimizations:
@@ -132,32 +157,16 @@ Optimizations:
 - Single validator instance per provider
 - Score shipping done off-thread; enqueue O(1)
 
-Benchmark guidance (.NET 8, no-op sink):
-- Fast path: 3–10M logs/sec
-- Topic cached path: 2–6M logs/sec
-- With per-log StackTrace (avoid): <0.5M logs/sec
-Real sinks are I/O-bound (50–200k logs/sec typical).
-
 ## Interoperability
-Works alongside existing MEL providers and frameworks:
-- Serilog / NLog / Log4Net (via MEL bridge)
-- OpenTelemetry Logging + OTLP Collector
-- Seq, Loki, ELK / OpenSearch, Fluentd / FluentBit, Graylog, VictoriaLogs / VictoriaMetrics, TelemetryHarbor, journald / syslog
+- Flows MEL scopes (ILogger.BeginScope) through provider and logger
+- Coexists with other MEL providers (Serilog, NLog, OTel, Console)
 
 ## FAQ
 Q: Does it replace my logger?  A: No, it wraps MEL and preserves existing providers.
-Q: Can logs be dropped?       A: Original line is always emitted in this version; violations add a second JSON line.
+Q: Can logs be dropped?       A: Original line is always emitted; violations add a second JSON line.
 Q: How to relax one log?       A: Include `{Relax}` true and have `AllowRelax: true` in profile.
 Q: Scoring without impact?     A: No event shipped if `GovernanceScoreImpact` missing or non-numeric.
 Q: License gating?             A: `LicenseAllowsScoring=false` blocks shipping even if enabled.
-Q: PII/Forbidden handling?     A: Profile `FieldSeverities` drives enforcement and violation tagging.
-
-## Related Cerbi Components
-- CerbiStream (logging pipeline)
-- Cerbi.Governance.Core / Runtime (shared models, validation)
-- GovernanceAnalyzer (compile-time rules)
-- CerbiShield (profile management)
-- CerbIQ / CerbiSense (routing / analytics)
 
 ## Contributing
 Issues and PRs with tests welcome. MIT licensed.

@@ -11,35 +11,40 @@ namespace Cerbi
     /// and injects CerbiGovernanceLogger on top of it.
     /// Owns a ScoreShipper for governance score events.
     /// </summary>
-    public class CerbiLoggerProvider : ILoggerProvider
+    public class CerbiLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
         private readonly ConsoleLoggerProvider _consoleProvider;
         private readonly RuntimeGovernanceValidator _validator;
         private readonly string _defaultTopic;
         private readonly ScoreShipper _scoreShipper;
         private readonly CerbiGovernanceMELSettings _settings;
+        private IExternalScopeProvider? _scopeProvider;
 
         // Legacy constructor kept for backward compatibility (tests etc.)
         public CerbiLoggerProvider(ConsoleLoggerProvider consoleProvider, RuntimeGovernanceValidator validator, string profileName)
-            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings()) { }
+            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings(), new ScoreShipper(new HttpClient(), new ScoreShippingOptions())) { }
 
         public CerbiLoggerProvider(
             ConsoleLoggerProvider consoleProvider,
             RuntimeGovernanceValidator validator,
             string profileName,
-            CerbiGovernanceMELSettings settings)
+            CerbiGovernanceMELSettings settings,
+            ScoreShipper scoreShipper)
         {
             _consoleProvider = consoleProvider;
             _validator = validator;
             _defaultTopic = profileName ?? string.Empty;
             _settings = settings;
-            // Create shipper (will be inert if disabled)
-            _scoreShipper = new ScoreShipper(new HttpClient(), _settings.ScoreShipping);
+            _scoreShipper = scoreShipper;
         }
 
         public ILogger CreateLogger(string categoryName)
         {
             var innerLogger = _consoleProvider.CreateLogger(categoryName);
+            if (_scopeProvider is not null && innerLogger is ISupportExternalScope supports)
+            {
+                supports.SetScopeProvider(_scopeProvider);
+            }
             return new CerbiGovernanceLogger(innerLogger, _validator, _defaultTopic, categoryName, () => _settings.Enabled, _scoreShipper, _settings);
         }
 
@@ -47,6 +52,11 @@ namespace Cerbi
         {
             _consoleProvider.Dispose();
             _scoreShipper.Dispose();
+        }
+
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider)
+        {
+            _scopeProvider = scopeProvider;
         }
     }
 }

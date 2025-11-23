@@ -1,7 +1,8 @@
 ﻿using Cerbi;                             // for AddCerbiGovernance(...)
-using Cerbi.Governance;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 
@@ -61,6 +62,34 @@ namespace Cerbi.Tests
             var logger = loggerFactory.CreateLogger("TestCategory");
 
             // Assert: we get a non-null ILogger (type is Microsoft.Extensions.Logging.Logger internally)
+            Assert.NotNull(logger);
+        }
+
+        [Fact]
+        public void AddCerbiGovernance_Binds_From_Configuration()
+        {
+            var dict = new Dictionary<string, string?>
+            {
+                ["Cerbi:Governance:Profile"] = "Orders",
+                ["Cerbi:Governance:ConfigPath"] = "cerbi.json",
+                ["Cerbi:Governance:Enabled"] = "true",
+                ["Cerbi:Governance:EnforcementMode"] = "Audit",
+                ["Cerbi:Governance:MinValidationLevel"] = "Warning",
+                ["Cerbi:Governance:SamplingRate"] = "0.5",
+                ["Cerbi:Governance:AppName"] = "App",
+                ["Cerbi:Governance:Environment"] = "dev",
+                ["Cerbi:Governance:ScoreShipping:Enabled"] = "true",
+                ["Cerbi:Governance:ScoreShipping:LicenseAllowsScoring"] = "true",
+                ["Cerbi:Governance:ScoreShipping:Endpoint"] = "http://localhost",
+            };
+            IConfiguration config = new ConfigurationBuilder().AddInMemoryCollection(dict!).Build();
+
+            var services = new ServiceCollection();
+            services.AddLogging(b => b.AddCerbiGovernance(config));
+            using var sp = services.BuildServiceProvider();
+
+            var factory = sp.GetRequiredService<ILoggerFactory>();
+            var logger = factory.CreateLogger("Cat");
             Assert.NotNull(logger);
         }
     }

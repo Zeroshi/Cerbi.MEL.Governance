@@ -5,10 +5,10 @@ using System.Linq;
 
 namespace Cerbi
 {
-    // This is a public type at namespace scope
-    public class CompositeLoggerProvider : ILoggerProvider
+    public class CompositeLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
         private readonly IEnumerable<ILoggerProvider> _providers;
+        private IExternalScopeProvider? _scopeProvider;
 
         public CompositeLoggerProvider(IEnumerable<ILoggerProvider> providers)
         {
@@ -17,19 +17,35 @@ namespace Cerbi
 
         public ILogger CreateLogger(string categoryName)
         {
-            // Ask each inner provider to create its own ILogger
             var loggers = _providers.Select(p => p.CreateLogger(categoryName)).ToList();
+            foreach (var logger in loggers)
+            {
+                if (_scopeProvider != null && logger is ISupportExternalScope s)
+                {
+                    s.SetScopeProvider(_scopeProvider);
+                }
+            }
             return new CompositeLogger(loggers);
         }
 
         public void Dispose()
         {
-            // Dispose each inner provider (if it implements IDisposable)
             foreach (var provider in _providers)
                 (provider as IDisposable)?.Dispose();
         }
 
-        // This nested class is private—**but it is inside CompositeLoggerProvider**, not at namespace scope
+        public void SetScopeProvider(IExternalScopeProvider scopeProvider)
+        {
+            _scopeProvider = scopeProvider;
+            foreach (var p in _providers)
+            {
+                if (p is ISupportExternalScope s)
+                {
+                    s.SetScopeProvider(scopeProvider);
+                }
+            }
+        }
+
         private class CompositeLogger : ILogger
         {
             private readonly List<ILogger> _loggers;
@@ -41,13 +57,11 @@ namespace Cerbi
 
             public IDisposable BeginScope<TState>(TState state) where TState : notnull
             {
-                // Begin a scope on each inner logger; wrap them in CompositeScope
                 var scopes = _loggers.Select(l => l.BeginScope(state)).ToList();
                 return new CompositeScope(scopes);
             }
 
             public bool IsEnabled(LogLevel logLevel) =>
-                // Return true if ANY inner logger is enabled at this level
                 _loggers.Any(l => l.IsEnabled(logLevel));
 
             public void Log<TState>(
@@ -57,14 +71,12 @@ namespace Cerbi
                 Exception? exception,
                 Func<TState, Exception?, string> formatter)
             {
-                // Fan out the same log call to every inner logger
                 foreach (var logger in _loggers)
                 {
                     logger.Log(logLevel, eventId, state, exception, formatter);
                 }
             }
 
-            // This nested class is private too—but it is inside CompositeLogger, not at namespace scope
             private class CompositeScope : IDisposable
             {
                 private readonly List<IDisposable> _scopes;

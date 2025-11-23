@@ -18,11 +18,36 @@
         /// </summary>
         public bool Enabled { get; set; } = true;
 
+        /// <summary>
+        /// Enforcement behavior for validation.
+        /// Strict: validate in-process; emit violation JSON when violations occur.
+        /// Audit: validate in-process; only record violations for auditing (no behavior change).
+        /// Off: skip validation entirely.
+        /// </summary>
+        public GovernanceEnforcementMode EnforcementMode { get; set; } = GovernanceEnforcementMode.Strict;
+
+        /// <summary>
+        /// Minimum log level to run validation for.
+        /// </summary>
+        public Microsoft.Extensions.Logging.LogLevel MinValidationLevel { get; set; } = Microsoft.Extensions.Logging.LogLevel.Trace;
+
+        /// <summary>
+        /// Fraction of log entries to validate (0.0–1.0). 1.0 = validate all.
+        /// </summary>
+        public double SamplingRate { get; set; } = 1.0;
+
         // New: application identity for scoring events
         public string AppName { get; set; } = string.Empty;
         public string Environment { get; set; } = string.Empty;
         // New: score shipping options
         public ScoreShippingOptions ScoreShipping { get; set; } = new();
+    }
+
+    public enum GovernanceEnforcementMode
+    {
+        Strict = 0,
+        Audit = 1,
+        Off = 2
     }
 
     public class ScoreShippingOptions
