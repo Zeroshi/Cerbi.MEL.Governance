@@ -51,7 +51,8 @@ namespace Cerbi
                     client = new HttpClient();
                 }
 
-                var shipper = new ScoreShipper(client, settings.ScoreShipping);
+                var queueSender = AzureServiceBusScoringSender.Create(settings.ScoringIngestion?.AzureServiceBus);
+                var shipper = new ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion, queueSender);
 
                 return new CerbiLoggerProvider(
                     consoleProv,
@@ -111,6 +112,21 @@ namespace Cerbi
                     if (int.TryParse(score["RetryDelayMilliseconds"], out var rd)) opts.ScoreShipping.RetryDelayMilliseconds = rd;
                     opts.ScoreShipping.Endpoint = score["Endpoint"] ?? opts.ScoreShipping.Endpoint;
                     opts.ScoreShipping.ApiKey = score["ApiKey"] ?? opts.ScoreShipping.ApiKey;
+                }
+
+                var ingestion = section.GetSection("ScoringIngestion");
+                if (ingestion != null)
+                {
+                    var ingestionMode = ingestion["Mode"];
+                    if (!string.IsNullOrWhiteSpace(ingestionMode) && Enum.TryParse<ScoringIngestionMode>(ingestionMode, true, out var ingestionParsed))
+                        opts.ScoringIngestion.Mode = ingestionParsed;
+
+                    var sb = ingestion.GetSection("AzureServiceBus");
+                    if (sb != null)
+                    {
+                        opts.ScoringIngestion.AzureServiceBus.ConnectionString = sb["ConnectionString"] ?? opts.ScoringIngestion.AzureServiceBus.ConnectionString;
+                        opts.ScoringIngestion.AzureServiceBus.QueueName = sb["QueueName"] ?? opts.ScoringIngestion.AzureServiceBus.QueueName;
+                    }
                 }
             });
         }

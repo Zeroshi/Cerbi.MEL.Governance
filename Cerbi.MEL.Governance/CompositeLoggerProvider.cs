@@ -57,7 +57,15 @@ namespace Cerbi
 
             public IDisposable BeginScope<TState>(TState state) where TState : notnull
             {
-                var scopes = _loggers.Select(l => l.BeginScope(state)).ToList();
+                var scopes = new List<IDisposable>(_loggers.Count);
+                foreach (var logger in _loggers)
+                {
+                    var scope = logger.BeginScope(state);
+                    if (scope != null)
+                    {
+                        scopes.Add(scope);
+                    }
+                }
                 return new CompositeScope(scopes);
             }
 

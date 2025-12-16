@@ -1,11 +1,15 @@
-﻿using Cerbi.Governance;
+﻿using Cerbi.Contracts;
+using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 
@@ -159,7 +163,7 @@ namespace Cerbi
             }
 
             // Score shipping extraction (non-blocking)
-            TryShipScore(fields);
+            TryShipScore(fields, topic, eventId);
         }
 
         public void SetScopeProvider(IExternalScopeProvider scopeProvider)
@@ -167,34 +171,94 @@ namespace Cerbi
             _scopeProvider = scopeProvider;
         }
 
-        private void TryShipScore(Dictionary<string, object> fields)
+        private void TryShipScore(Dictionary<string, object> fields, string topic, EventId eventId)
         {
             if (!_settings.ScoreShipping.Enabled || !_settings.ScoreShipping.LicenseAllowsScoring) return;
             if (!fields.TryGetValue("GovernanceScoreImpact", out var rawImpact)) return;
-            if (!double.TryParse(rawImpact?.ToString(), out var impact)) return;
+            if (!double.TryParse(rawImpact?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var impact)) return;
+
             var relaxed = fields.TryGetValue("GovernanceRelaxed", out var r) && r is bool b && b;
-            GovernanceViolationSummary[] summaries = Array.Empty<GovernanceViolationSummary>();
-            if (fields.TryGetValue("GovernanceViolations", out var rawViolations))
+            var tenantId = ExtractString(fields, "TenantId");
+            var logId = ExtractString(fields, "LogId") ?? (eventId.Id != 0 ? eventId.Id.ToString(CultureInfo.InvariantCulture) : Guid.NewGuid().ToString("N"));
+            var correlationId = ExtractString(fields, "CorrelationId") ?? ExtractString(fields, "correlationId") ?? Activity.Current?.TraceId.ToString();
+            var idempotencyKey = ExtractString(fields, "IdempotencyKey");
+            var finalIdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey)
+                ? GenerateDeterministicId(tenantId, _settings.AppName, logId)
+                : idempotencyKey!;
+
+            var summaries = ExtractViolations(fields);
+            var fieldCopy = new Dictionary<string, object?>(fields.Count, StringComparer.Ordinal);
+            foreach (var kv in fields)
             {
-                if (rawViolations is IEnumerable<string> vs)
-                {
-                    summaries = vs.Select(x => new GovernanceViolationSummary { Code = x, Rule = x }).ToArray();
-                }
-                else if (rawViolations is IEnumerable<object> objs)
-                {
-                    summaries = objs.Select(o => new GovernanceViolationSummary { Code = o?.ToString() ?? string.Empty, Rule = o?.ToString() ?? string.Empty }).ToArray();
-                }
+                fieldCopy[kv.Key] = kv.Value;
             }
-            var ev = new GovernanceScoreEvent
+
+            var envelope = new ScoringQueueEnvelopeDto
             {
+                IdempotencyKey = finalIdempotencyKey,
+                CorrelationId = correlationId,
+                TenantId = tenantId,
                 AppName = _settings.AppName,
                 Environment = _settings.Environment,
-                Timestamp = DateTimeOffset.UtcNow,
-                ScoreImpact = impact,
-                GovernanceRelaxed = relaxed,
-                Violations = summaries
+                Payload = new ScoringEventDto
+                {
+                    IdempotencyKey = finalIdempotencyKey,
+                    CorrelationId = correlationId,
+                    TenantId = tenantId,
+                    AppName = _settings.AppName,
+                    Environment = _settings.Environment,
+                    Topic = topic,
+                    Category = _categoryName,
+                    LogId = logId,
+                    GovernanceProfile = topic,
+                    EventId = eventId.Id,
+                    EventName = eventId.Name,
+                    ScoreImpact = impact,
+                    GovernanceRelaxed = relaxed,
+                    Timestamp = DateTimeOffset.UtcNow,
+                    Violations = summaries,
+                    Fields = fieldCopy
+                }
             };
-            _scoreShipper.Enqueue(ev);
+
+            _scoreShipper.Enqueue(envelope);
+        }
+
+        private static GovernanceViolationSummary[] ExtractViolations(Dictionary<string, object> fields)
+        {
+            if (!fields.TryGetValue("GovernanceViolations", out var rawViolations) || rawViolations == null)
+                return Array.Empty<GovernanceViolationSummary>();
+
+            if (rawViolations is IEnumerable<string> vs)
+            {
+                return vs.Select(x => new GovernanceViolationSummary { Code = x, Rule = x }).ToArray();
+            }
+            if (rawViolations is IEnumerable<object> objs)
+            {
+                return objs.Select(o => new GovernanceViolationSummary
+                {
+                    Code = o?.ToString() ?? string.Empty,
+                    Rule = o?.ToString() ?? string.Empty
+                }).ToArray();
+            }
+            return Array.Empty<GovernanceViolationSummary>();
+        }
+
+        private static string? ExtractString(Dictionary<string, object> fields, string key)
+        {
+            if (fields.TryGetValue(key, out var value))
+            {
+                return value?.ToString();
+            }
+            return null;
+        }
+
+        private static string GenerateDeterministicId(string? tenantId, string appName, string logId)
+        {
+            var input = $"{tenantId ?? string.Empty}|{appName}|{logId}";
+            using var sha = SHA256.Create();
+            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
+            return Convert.ToHexString(hash);
         }
 
         private static IEnumerable<string> EnumerateWithFirst(IEnumerable<string> source, string first)
@@ -207,7 +271,10 @@ namespace Cerbi
                     first = null!;
                     continue;
                 }
-                yield return s;
+                if (s != null)
+                {
+                    yield return s;
+                }
             }
         }
 

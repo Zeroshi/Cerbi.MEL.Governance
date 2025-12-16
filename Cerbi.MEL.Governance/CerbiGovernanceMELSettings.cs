@@ -36,11 +36,11 @@
         /// </summary>
         public double SamplingRate { get; set; } = 1.0;
 
-        // New: application identity for scoring events
+        // application identity for scoring events
         public string AppName { get; set; } = string.Empty;
         public string Environment { get; set; } = string.Empty;
-        // New: score shipping options
         public ScoreShippingOptions ScoreShipping { get; set; } = new();
+        public ScoringIngestionOptions ScoringIngestion { get; set; } = new();
     }
 
     public enum GovernanceEnforcementMode
@@ -61,5 +61,24 @@
         public int RetryDelayMilliseconds { get; set; } = 500; // base delay
         public string Endpoint { get; set; } = ""; // scoring endpoint URL
         public string ApiKey { get; set; } = ""; // optional auth header secret
+    }
+
+    public class ScoringIngestionOptions
+    {
+        public ScoringIngestionMode Mode { get; set; } = ScoringIngestionMode.QueueFirst;
+        public AzureServiceBusOptions AzureServiceBus { get; set; } = new();
+    }
+
+    public enum ScoringIngestionMode
+    {
+        QueueFirst = 0,
+        HttpOnly = 1,
+        QueueOnly = 2
+    }
+
+    public class AzureServiceBusOptions
+    {
+        public string ConnectionString { get; set; } = string.Empty;
+        public string QueueName { get; set; } = string.Empty;
     }
 }
