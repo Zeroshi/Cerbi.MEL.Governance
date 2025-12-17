@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+/Cerbi.CerbiShield.Contracts.0.1.0/lib/net8.0
+/Cerbi.CerbiShield.Contracts.0.1.0/package/services/metadata/core-properties
+/Cerbi.CerbiShield.Contracts.0.1.0/_rels
