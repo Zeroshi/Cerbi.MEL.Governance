@@ -1,4 +1,5 @@
 ﻿using Cerbi.Governance;
+using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using System;
@@ -16,7 +17,7 @@ namespace Cerbi
         private readonly ConsoleLoggerProvider _consoleProvider;
         private readonly RuntimeGovernanceValidator _validator;
         private readonly string _defaultTopic;
-        private readonly ScoreShipper _scoreShipper;
+        private readonly IScoreShipper _scoreShipper;
         private readonly CerbiGovernanceMELSettings _settings;
         private IExternalScopeProvider? _scopeProvider;
 
@@ -29,7 +30,7 @@ namespace Cerbi
             RuntimeGovernanceValidator validator,
             string profileName,
             CerbiGovernanceMELSettings settings,
-            ScoreShipper scoreShipper)
+            IScoreShipper scoreShipper)
         {
             _consoleProvider = consoleProvider;
             _validator = validator;

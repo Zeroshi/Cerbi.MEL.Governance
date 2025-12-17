@@ -1,13 +1,17 @@
+using Azure.Messaging.ServiceBus;
+using Cerbi;
 using Cerbi.Contracts;
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using Serilog.Debugging;
 
 namespace Cerbi
 {
@@ -17,35 +21,34 @@ namespace Cerbi
     /// </summary>
     public class ScoreShipper : IDisposable
     {
-        private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+        private static readonly JsonSerializerOptions SerializerOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
-        private readonly HttpClient _httpClient;
         private readonly ScoreShippingOptions _options;
+        private readonly HttpClient _httpClient;
         private readonly ScoringIngestionOptions _ingestionOptions;
-        private readonly IScoringQueueSender _queueSender;
-        private readonly Action<string>? _warn;
-        private readonly ConcurrentQueue<ScoringQueueEnvelopeDto> _queue = new();
+        private readonly ServiceBusClient? _serviceBusClient;
+        private readonly ServiceBusSender? _serviceBusSender;
+        private readonly ConcurrentQueue<GovernanceScoreEvent> _queue = new();
         private readonly CancellationTokenSource _cts = new();
-        private readonly Task _loop;
-        private int _drainActive;
+        private readonly Task _worker;
+        private int _sending = 0;
 
         public ScoreShipper(HttpClient httpClient, ScoreShippingOptions options)
-            : this(httpClient, options, new ScoringIngestionOptions(), NoopScoringQueueSender.Instance, null)
+            : this(httpHttpClient, options, new ScoringIngestionOptions(), NoopScoringQueueSender.Instance, null)
         {
         }
 
-        internal ScoreShipper(HttpClient httpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions, IScoringQueueSender? queueSender, Action<string>? warn = null)
+        public ScoreShipper(HttpClient httpHttpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions = null)
         {
-            _httpClient = httpClient;
-            _options = options;
+            _httpClient = httpHttpClient;
+            _options = options ?? new ScoreShippingOptions();
             _ingestionOptions = ingestionOptions ?? new ScoringIngestionOptions();
-            _queueSender = queueSender ?? NoopScoringQueueSender.Instance;
-            _warn = warn;
-            if (!string.IsNullOrEmpty(options.ApiKey))
-            {
-                _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("X-Api-Key", options.ApiKey);
-            }
-            _loop = Task.Run(RunAsync);
+            (_serviceBusClient, _serviceBusSender) = CreateServiceBusSender(_ingestionOptions);
+            _worker = Task.Run(WorkerLoop);
         }
 
         public virtual void Enqueue(ScoringQueueEnvelopeDto envelope)
@@ -97,7 +100,7 @@ namespace Cerbi
 
         internal void FlushForTesting() => FlushOnce();
 
-        private async Task RunAsync()
+        private async Task WorkerLoopAsync()
         {
             var token = _cts.Token;
             while (!token.IsCancellationRequested)
@@ -117,7 +120,7 @@ namespace Cerbi
 
         private void FlushOnce()
         {
-            if (Interlocked.Exchange(ref _drainActive, 1) == 1) return;
+            if (Interlocked.Exchange(ref _sending, 1) == 1) return;
             try
             {
                 if (_queue.IsEmpty) return;
@@ -131,7 +134,7 @@ namespace Cerbi
             }
             finally
             {
-                Interlocked.Exchange(ref _drainActive, 0);
+                Interlocked.Exchange(ref _sending, 0);
             }
         }
 
@@ -144,7 +147,7 @@ namespace Cerbi
                 {
                     foreach (var envelope in batch)
                     {
-                        await _queueSender.SendAsync(envelope, _cts.Token).ConfigureAwait(false);
+                        await _serviceBusSender.SendMessageAsync(envelope.ToServiceBusMessage(), _cts.Token).ConfigureAwait(false);
                     }
                     queueUsed = true;
                     if (_ingestionOptions.Mode == ScoringIngestionMode.QueueOnly)
@@ -184,7 +187,43 @@ namespace Cerbi
             }
         }
 
-        private bool ShouldUseQueue => _queueSender.IsConfigured && _ingestionOptions.Mode != ScoringIngestionMode.HttpOnly;
+        private async Task SendQueueAsync(IReadOnlyList<ScoringQueueEnvelopeDto> envelopes)
+        {
+            if (_serviceBusSender is null)
+            {
+                SelfLog.WriteLine("[CerbiGovernance] Service Bus sender is not configured.");
+                return;
+            }
+
+            foreach (var envelope in envelopes)
+            {
+                try
+                {
+                    var message = BuildServiceBusMessage(envelope);
+                    await _serviceBusSender.SendMessageAsync(message, _cts.Token).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    SelfLog.WriteLine("[CerbiGovernance] Failed to send scoring event to Service Bus: {0}", ex);
+                }
+            }
+        }
+
+        private ServiceBusMessage BuildServiceBusMessage(ScoringQueueEnvelopeDto envelope)
+        {
+            var payload = JsonSerializer.Serialize(envelope, SerializerOptions);
+            var body = Encoding.UTF8.GetBytes(payload);
+            var message = new ServiceBusMessage(body)
+            {
+                ContentType = "application/json",
+                MessageId = envelope.IdempotencyKey ?? Guid.NewGuid().ToString("N"),
+                CorrelationId = envelope.CorrelationId ?? envelope.Payload?.CorrelationId,
+                Subject = envelope.Payload?.Topic
+            };
+            return message;
+        }
+
+        private bool ShouldUseQueue => _serviceBusSender != null && _ingestionOptions.Mode != ScoringIngestionMode.HttpOnly;
         private bool ShouldUseHttp => !string.IsNullOrWhiteSpace(_options.Endpoint) && _ingestionOptions.Mode != ScoringIngestionMode.QueueOnly;
 
         private void Warn(string message)
@@ -202,9 +241,31 @@ namespace Cerbi
         public void Dispose()
         {
             _cts.Cancel();
-            try { _loop.Wait(500); } catch { }
+            try { _worker.Wait(500); } catch { }
             _cts.Dispose();
-            _queueSender.Dispose();
+            _serviceBusClient.Dispose();
+        }
+
+        private static (ServiceBusClient? Client, ServiceBusSender? Sender) CreateServiceBusSender(ScoringIngestionOptions? ingestionOptions)
+        {
+            var azure = ingestionOptions?.AzureServiceBus;
+            if (azure == null) return (null, null);
+            if (string.IsNullOrWhiteSpace(azure.ConnectionString) || string.IsNullOrWhiteSpace(azure.QueueName))
+            {
+                return (null, null);
+            }
+
+            try
+            {
+                var client = new ServiceBusClient(azure.ConnectionString);
+                var sender = client.CreateSender(azure.QueueName);
+                return (client, sender);
+            }
+            catch (Exception ex)
+            {
+                SelfLog.WriteLine("[CerbiGovernance] Failed to create Service Bus sender: {0}", ex);
+                return (null, null);
+            }
         }
     }
 }

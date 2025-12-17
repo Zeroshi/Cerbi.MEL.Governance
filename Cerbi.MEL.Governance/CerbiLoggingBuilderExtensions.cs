@@ -1,4 +1,5 @@
-﻿using Cerbi.Governance;                // for RuntimeGovernanceValidator, FileGovernanceSource
+﻿using Cerbi.Serilog.Governance;
+using Cerbi.Governance;                // for RuntimeGovernanceValidator, FileGovernanceSource
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -51,8 +52,7 @@ namespace Cerbi
                     client = new HttpClient();
                 }
 
-                var queueSender = AzureServiceBusScoringSender.Create(settings.ScoringIngestion?.AzureServiceBus);
-                var shipper = new ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion, queueSender);
+                var shipper = new ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion);
 
                 return new CerbiLoggerProvider(
                     consoleProv,

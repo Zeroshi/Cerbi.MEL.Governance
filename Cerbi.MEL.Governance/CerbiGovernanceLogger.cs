@@ -1,7 +1,8 @@
-﻿using Cerbi.Contracts;
+﻿using Cerbi.Serilog.Governance;
 using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using System;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,6 +12,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 
 namespace Cerbi
@@ -21,6 +23,11 @@ namespace Cerbi
         private static readonly ConcurrentDictionary<Type, string?> TypeTopicCache = new();
         private static readonly AsyncLocal<string?> ScopeTopic = new();
         private static readonly JsonSerializerOptions JsonOpts = new JsonSerializerOptions { WriteIndented = false };
+        private static readonly JsonSerializerOptions ViolationJsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
         private readonly ILogger _inner;
         private readonly RuntimeGovernanceValidator _validator;
@@ -29,7 +36,7 @@ namespace Cerbi
         private readonly Func<bool>? _isGovernanceEnabled;
         private string? _cachedStackTraceTopic; // empty string means "none"
         private bool _stackTraceChecked;
-        private readonly ScoreShipper _scoreShipper;
+        private readonly IScoreShipper _scoreShipper;
         private readonly CerbiGovernanceMELSettings _settings;
         private IExternalScopeProvider? _scopeProvider;
 
@@ -40,7 +47,7 @@ namespace Cerbi
             : this(inner, validator, defaultTopic, categoryName, null, null, null) { }
         public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName, Func<bool>? isGovernanceEnabled)
             : this(inner, validator, defaultTopic, categoryName, isGovernanceEnabled, null, null) { }
-        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName, Func<bool>? isGovernanceEnabled, ScoreShipper? shipper, CerbiGovernanceMELSettings? settings)
+        public CerbiGovernanceLogger(ILogger inner, RuntimeGovernanceValidator validator, string defaultTopic, string? categoryName, Func<bool>? isGovernanceEnabled, IScoreShipper? shipper, CerbiGovernanceMELSettings? settings)
         {
             _inner = inner;
             _validator = validator;
@@ -193,35 +200,25 @@ namespace Cerbi
                 fieldCopy[kv.Key] = kv.Value;
             }
 
-            var envelope = new ScoringQueueEnvelopeDto
+            var scoreEvent = new GovernanceScoreEvent
             {
-                IdempotencyKey = finalIdempotencyKey,
-                CorrelationId = correlationId,
                 TenantId = tenantId,
                 AppName = _settings.AppName,
                 Environment = _settings.Environment,
-                Payload = new ScoringEventDto
-                {
-                    IdempotencyKey = finalIdempotencyKey,
-                    CorrelationId = correlationId,
-                    TenantId = tenantId,
-                    AppName = _settings.AppName,
-                    Environment = _settings.Environment,
-                    Topic = topic,
-                    Category = _categoryName,
-                    LogId = logId,
-                    GovernanceProfile = topic,
-                    EventId = eventId.Id,
-                    EventName = eventId.Name,
-                    ScoreImpact = impact,
-                    GovernanceRelaxed = relaxed,
-                    Timestamp = DateTimeOffset.UtcNow,
-                    Violations = summaries,
-                    Fields = fieldCopy
-                }
+                Topic = topic,
+                Category = _categoryName,
+                Profile = topic,
+                LogId = logId,
+                CorrelationId = correlationId,
+                IdempotencyKey = finalIdempotencyKey,
+                Timestamp = DateTimeOffset.UtcNow,
+                ScoreImpact = impact,
+                GovernanceRelaxed = relaxed,
+                Violations = summaries,
+                Fields = fieldCopy
             };
 
-            _scoreShipper.Enqueue(envelope);
+            _scoreShipper.Enqueue(scoreEvent);
         }
 
         private static GovernanceViolationSummary[] ExtractViolations(Dictionary<string, object> fields)
@@ -229,19 +226,44 @@ namespace Cerbi
             if (!fields.TryGetValue("GovernanceViolations", out var rawViolations) || rawViolations == null)
                 return Array.Empty<GovernanceViolationSummary>();
 
-            if (rawViolations is IEnumerable<string> vs)
+            if (rawViolations is IEnumerable enumerable)
             {
-                return vs.Select(x => new GovernanceViolationSummary { Code = x, Rule = x }).ToArray();
-            }
-            if (rawViolations is IEnumerable<object> objs)
-            {
-                return objs.Select(o => new GovernanceViolationSummary
+                var list = new List<GovernanceViolationSummary>();
+                foreach (var item in enumerable)
                 {
-                    Code = o?.ToString() ?? string.Empty,
-                    Rule = o?.ToString() ?? string.Empty
-                }).ToArray();
+                    list.Add(ConvertViolation(item));
+                }
+                return list.ToArray();
             }
+
             return Array.Empty<GovernanceViolationSummary>();
+        }
+
+        private static GovernanceViolationSummary ConvertViolation(object? violation)
+        {
+            try
+            {
+                if (violation is null)
+                {
+                    return Activator.CreateInstance<GovernanceViolationSummary>()!;
+                }
+
+                if (violation is string s)
+                {
+                    var payload = new { RuleId = s, Message = s, Raw = s };
+                    var json = JsonSerializer.Serialize(payload, ViolationJsonOptions);
+                    return JsonSerializer.Deserialize<GovernanceViolationSummary>(json, ViolationJsonOptions)
+                           ?? Activator.CreateInstance<GovernanceViolationSummary>()!;
+                }
+
+                var serialized = JsonSerializer.Serialize(violation, ViolationJsonOptions);
+                return JsonSerializer.Deserialize<GovernanceViolationSummary>(serialized, ViolationJsonOptions)
+                       ?? Activator.CreateInstance<GovernanceViolationSummary>()!;
+            }
+            catch
+            {
+                return Activator.CreateInstance<GovernanceViolationSummary>()!;
+            }
         }
 
         private static string? ExtractString(Dictionary<string, object> fields, string key)

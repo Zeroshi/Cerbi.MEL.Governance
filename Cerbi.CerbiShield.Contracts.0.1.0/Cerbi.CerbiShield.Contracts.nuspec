@@ -1,0 +1,16 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2012/06/nuspec.xsd">
+  <metadata>
+    <id>Cerbi.CerbiShield.Contracts</id>
+    <version>0.1.0</version>
+    <authors>Cerbi</authors>
+    <license type="expression">MIT</license>
+    <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
+    <readme>README.md</readme>
+    <description>Canonical scoring DTOs shared between logger adapters, the Scoring API, and analytics services.</description>
+    <repository type="git" url="https://github.com/cerbi-ai/Cerbi.Contracts" commit="c4794ae6f5c9121fee6a735b4e6697dd984de5fa" />
+    <dependencies>
+      <group targetFramework="net8.0" />
+    </dependencies>
+  </metadata>
+</package>

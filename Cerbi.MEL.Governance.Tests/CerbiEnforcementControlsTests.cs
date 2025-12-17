@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Cerbi;
 using Cerbi.Governance;
+using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -10,11 +11,17 @@ namespace Cerbi.Tests
 {
     public class CerbiEnforcementControlsTests
     {
+        private sealed class NoopScoreShipper : IScoreShipper
+        {
+            public void Dispose() { }
+            public void Enqueue(GovernanceScoreEvent ev) { }
+        }
+
         private static CerbiGovernanceLogger CreateLogger(CerbiGovernanceMELSettings settings, Mock<ILogger>? innerMock = null)
         {
             var inner = (innerMock ?? new Mock<ILogger>()).Object;
             var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource("x.json")) { CallBase = true }.Object;
-            var shipper = new ScoreShipper(new System.Net.Http.HttpClient(), settings.ScoreShipping);
+            var shipper = new NoopScoreShipper();
             return new CerbiGovernanceLogger(inner, validator, settings.Profile, "Cat", () => settings.Enabled, shipper, settings);
         }
 

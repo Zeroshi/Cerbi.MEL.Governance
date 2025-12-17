@@ -33,11 +33,17 @@
 
     <!-- Dependency‐injection abstractions (so our ILoggingBuilder extension can register services) -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.5" />
+    <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Include README.md inside the NuGet package (unchanged) -->
-    <None Include="README.md" Pack="true" PackagePath="" />
+    <Compile Remove="ScoreShipper.cs" />
+    <Compile Remove="ScoringQueueSender.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+     <!-- Include README.md inside the NuGet package (unchanged) -->
+     <None Include="README.md" Pack="true" PackagePath="" />
+   </ItemGroup>
 
 </Project>
