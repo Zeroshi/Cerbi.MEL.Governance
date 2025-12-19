@@ -12,27 +12,27 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using Cerbi;
-using Cerbi.Contracts;
+using Cerbi.Contracts.Contracts;
 
 namespace Cerbi.Serilog.Governance
 {
     public interface IScoreShipper : IDisposable
     {
-        void Enqueue(GovernanceScoreEvent ev);
+        void Enqueue(ScoringEventDto ev);
     }
 
     internal sealed class ScoreShipper : IScoreShipper
     {
         private static readonly JsonSerializerOptions SerializerOptions = new()
         {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            PropertyNamingPolicy = null,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
 
         private readonly ScoreShippingOptions _options;
         private readonly ScoringIngestionOptions _ingestionOptions;
         private readonly HttpClient _httpClient;
-        private readonly ConcurrentQueue<GovernanceScoreEvent> _queue = new();
+        private readonly ConcurrentQueue<ScoringEventDto> _queue = new();
         private readonly CancellationTokenSource _cts = new();
         private readonly Task _worker;
         private readonly ServiceBusClient? _serviceBusClient;
@@ -48,7 +48,7 @@ namespace Cerbi.Serilog.Governance
             _worker = Task.Run(WorkerLoop);
         }
 
-        public void Enqueue(GovernanceScoreEvent ev)
+        public void Enqueue(ScoringEventDto ev)
         {
             if (!_options.Enabled || !_options.LicenseAllowsScoring) return;
             if (_queue.Count >= _options.MaxQueueSize) return;
@@ -92,7 +92,7 @@ namespace Cerbi.Serilog.Governance
             {
                 if (_queue.IsEmpty) return;
 
-                var batch = ArrayPool<GovernanceScoreEvent>.Shared.Rent(_options.BatchSize);
+                var batch = ArrayPool<ScoringEventDto>.Shared.Rent(_options.BatchSize);
                 var count = 0;
 
                 try
@@ -115,7 +115,7 @@ namespace Cerbi.Serilog.Governance
                 finally
                 {
                     Array.Clear(batch, 0, count);
-                    ArrayPool<GovernanceScoreEvent>.Shared.Return(batch);
+                    ArrayPool<ScoringEventDto>.Shared.Return(batch);
                 }
             }
             finally
@@ -193,8 +193,8 @@ namespace Cerbi.Serilog.Governance
             {
                 ContentType = "application/json",
                 MessageId = envelope.IdempotencyKey ?? Guid.NewGuid().ToString("N"),
-                CorrelationId = envelope.CorrelationId ?? envelope.Payload?.CorrelationId,
-                Subject = envelope.Payload?.Topic
+                CorrelationId = envelope.Payload?.CorrelationId,
+                Subject = envelope.Payload?.GovernanceProfile
             };
             return message;
         }

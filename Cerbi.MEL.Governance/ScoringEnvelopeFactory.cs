@@ -1,80 +1,67 @@
 using System;
-using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Text;
-using Cerbi.Contracts;
- 
- namespace Cerbi.Serilog.Governance
- {
-     internal static class ScoringEnvelopeFactory
-     {
+using Cerbi.Contracts.Contracts;
+
+namespace Cerbi.Serilog.Governance
+{
+    internal static class ScoringEnvelopeFactory
+    {
         private const string MessageType = "scoring-event";
-        private const string SchemaVersion = "1.0";
         private static readonly string ProducerVersion = typeof(ScoringEnvelopeFactory).Assembly.GetName().Version?.ToString() ?? "1.0.0";
         private static readonly string RuntimeSignature = $".NET {Environment.Version}";
 
-        public static ScoringQueueEnvelopeDto Create(GovernanceScoreEvent scoreEvent)
-         {
+        public static ScoringQueueEnvelopeDto Create(ScoringEventDto scoreEvent)
+        {
             if (scoreEvent is null) throw new ArgumentNullException(nameof(scoreEvent));
 
-            var fields = scoreEvent.Fields ?? new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            var payload = new ScoringEventDto
+            var normalized = new ScoringEventDto
             {
-                IdempotencyKey = scoreEvent.IdempotencyKey,
-                CorrelationId = scoreEvent.CorrelationId,
+                SchemaVersion = scoreEvent.SchemaVersion == 0 ? ContractVersions.ScoringEventSchemaVersion : scoreEvent.SchemaVersion,
                 TenantId = scoreEvent.TenantId,
                 AppName = scoreEvent.AppName,
                 Environment = scoreEvent.Environment,
-                Topic = scoreEvent.Topic,
-                Category = scoreEvent.Category,
+                Runtime = scoreEvent.Runtime ?? RuntimeSignature,
+                TimestampUtc = scoreEvent.TimestampUtc == default ? DateTime.UtcNow : scoreEvent.TimestampUtc,
                 LogId = scoreEvent.LogId,
-                GovernanceProfile = scoreEvent.Profile,
-                Score = new ScoreBreakdownDto
-                {
-                    Overall = ToScoreBucket(scoreEvent.ScoreImpact),
-                    Governance = ToScoreBucket(scoreEvent.ScoreImpact)
-                },
-                GovernanceRelaxed = scoreEvent.GovernanceRelaxed,
-                Timestamp = scoreEvent.Timestamp,
-                Violations = scoreEvent.Violations ?? Array.Empty<GovernanceViolationSummary>(),
-                Fields = new Dictionary<string, object?>(fields, StringComparer.Ordinal)
+                CorrelationId = scoreEvent.CorrelationId,
+                GovernanceProfile = scoreEvent.GovernanceProfile,
+                GovernanceMode = scoreEvent.GovernanceMode,
+                LogLevel = scoreEvent.LogLevel,
+                Score = scoreEvent.Score,
+                Violations = scoreEvent.Violations,
+                GovernanceFlags = scoreEvent.GovernanceFlags
             };
 
-            var idempotency = scoreEvent.IdempotencyKey ?? ComputeDeterministicKey(scoreEvent);
+            var idempotency = ComputeDeterministicKey(normalized);
 
             return new ScoringQueueEnvelopeDto
             {
-                SchemaVersion = SchemaVersion,
+                EnvelopeVersion = ContractVersions.ScoringEnvelopeVersion,
+                MessageType = MessageType,
+                Producer = normalized.AppName,
+                ProducerVersion = ProducerVersion,
                 IdempotencyKey = idempotency,
-                CorrelationId = scoreEvent.CorrelationId,
-                TenantId = scoreEvent.TenantId,
-                AppName = scoreEvent.AppName,
-                Environment = scoreEvent.Environment,
-                Payload = payload
+                EnqueuedUtc = DateTime.UtcNow,
+                Payload = normalized
             };
-         }
- 
-         private static int? ToScoreBucket(double impact)
-         {
-             if (double.IsNaN(impact) || double.IsInfinity(impact)) return null;
-             return (int)Math.Round(impact, MidpointRounding.AwayFromZero);
-         }
- 
-         private static string ComputeDeterministicKey(GovernanceScoreEvent ev)
-         {
-             var builder = new StringBuilder();
-             if (!string.IsNullOrWhiteSpace(ev.TenantId)) builder.Append(ev.TenantId);
-             builder.Append('|');
-             if (!string.IsNullOrWhiteSpace(ev.AppName)) builder.Append(ev.AppName);
-             builder.Append('|');
-             if (!string.IsNullOrWhiteSpace(ev.LogId)) builder.Append(ev.LogId);
-             builder.Append('|');
-             builder.Append(ev.Timestamp.UtcDateTime.Ticks);
- 
-             using var sha = SHA256.Create();
-             var bytes = Encoding.UTF8.GetBytes(builder.ToString());
-             var hash = sha.ComputeHash(bytes);
-             return Convert.ToHexString(hash);
-         }
-     }
- }
+        }
+
+        private static string ComputeDeterministicKey(ScoringEventDto ev)
+        {
+            var builder = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(ev.TenantId)) builder.Append(ev.TenantId);
+            builder.Append('|');
+            if (!string.IsNullOrWhiteSpace(ev.AppName)) builder.Append(ev.AppName);
+            builder.Append('|');
+            if (!string.IsNullOrWhiteSpace(ev.LogId)) builder.Append(ev.LogId);
+            builder.Append('|');
+            builder.Append(ev.TimestampUtc.ToUniversalTime().Ticks);
+
+            using var sha = SHA256.Create();
+            var bytes = Encoding.UTF8.GetBytes(builder.ToString());
+            var hash = sha.ComputeHash(bytes);
+            return Convert.ToHexString(hash);
+        }
+    }
+}

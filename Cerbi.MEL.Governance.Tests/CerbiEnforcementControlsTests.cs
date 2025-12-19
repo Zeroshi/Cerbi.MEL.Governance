@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Cerbi;
+using Cerbi.Contracts.Contracts;
 using Cerbi.Governance;
 using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
@@ -14,7 +15,7 @@ namespace Cerbi.Tests
         private sealed class NoopScoreShipper : IScoreShipper
         {
             public void Dispose() { }
-            public void Enqueue(GovernanceScoreEvent ev) { }
+            public void Enqueue(ScoringEventDto ev) { }
         }
 
         private static CerbiGovernanceLogger CreateLogger(CerbiGovernanceMELSettings settings, Mock<ILogger>? innerMock = null)

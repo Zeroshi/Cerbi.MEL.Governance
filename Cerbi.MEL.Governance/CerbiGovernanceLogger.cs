@@ -1,5 +1,6 @@
 ﻿using Cerbi.Serilog.Governance;
 using Cerbi.Governance;
+using Cerbi.Contracts.Contracts;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections;
@@ -54,8 +55,8 @@ namespace Cerbi
             _defaultTopic = defaultTopic ?? string.Empty;
             _categoryName = categoryName ?? string.Empty;
             _isGovernanceEnabled = isGovernanceEnabled;
-            _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), new ScoreShippingOptions());
             _settings = settings ?? new CerbiGovernanceMELSettings();
+            _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -170,7 +171,7 @@ namespace Cerbi
             }
 
             // Score shipping extraction (non-blocking)
-            TryShipScore(fields, topic, eventId);
+            TryShipScore(fields, topic, eventId, logLevel);
         }
 
         public void SetScopeProvider(IExternalScopeProvider scopeProvider)
@@ -178,7 +179,7 @@ namespace Cerbi
             _scopeProvider = scopeProvider;
         }
 
-        private void TryShipScore(Dictionary<string, object> fields, string topic, EventId eventId)
+        private void TryShipScore(Dictionary<string, object> fields, string topic, EventId eventId, LogLevel logLevel)
         {
             if (!_settings.ScoreShipping.Enabled || !_settings.ScoreShipping.LicenseAllowsScoring) return;
             if (!fields.TryGetValue("GovernanceScoreImpact", out var rawImpact)) return;
@@ -188,47 +189,45 @@ namespace Cerbi
             var tenantId = ExtractString(fields, "TenantId");
             var logId = ExtractString(fields, "LogId") ?? (eventId.Id != 0 ? eventId.Id.ToString(CultureInfo.InvariantCulture) : Guid.NewGuid().ToString("N"));
             var correlationId = ExtractString(fields, "CorrelationId") ?? ExtractString(fields, "correlationId") ?? Activity.Current?.TraceId.ToString();
-            var idempotencyKey = ExtractString(fields, "IdempotencyKey");
-            var finalIdempotencyKey = string.IsNullOrWhiteSpace(idempotencyKey)
-                ? GenerateDeterministicId(tenantId, _settings.AppName, logId)
-                : idempotencyKey!;
 
             var summaries = ExtractViolations(fields);
-            var fieldCopy = new Dictionary<string, object?>(fields.Count, StringComparer.Ordinal);
-            foreach (var kv in fields)
-            {
-                fieldCopy[kv.Key] = kv.Value;
-            }
 
-            var scoreEvent = new GovernanceScoreEvent
+            var scoreEvent = new ScoringEventDto
             {
+                SchemaVersion = ContractVersions.ScoringEventSchemaVersion,
                 TenantId = tenantId,
                 AppName = _settings.AppName,
                 Environment = _settings.Environment,
-                Topic = topic,
-                Category = _categoryName,
-                Profile = topic,
+                Runtime = $".NET {Environment.Version}",
+                TimestampUtc = DateTime.UtcNow,
                 LogId = logId,
                 CorrelationId = correlationId,
-                IdempotencyKey = finalIdempotencyKey,
-                Timestamp = DateTimeOffset.UtcNow,
-                ScoreImpact = impact,
-                GovernanceRelaxed = relaxed,
-                Violations = summaries,
-                Fields = fieldCopy
+                GovernanceProfile = topic,
+                GovernanceMode = _settings.EnforcementMode.ToString(),
+                LogLevel = logLevel.ToString(),
+                Score = new ScoreBreakdownDto
+                {
+                    Overall = ToScoreBucket(impact),
+                    Governance = ToScoreBucket(impact)
+                },
+                GovernanceFlags = new GovernanceFlagsDto
+                {
+                    GovernanceRelaxed = relaxed
+                },
+                Violations = summaries
             };
 
             _scoreShipper.Enqueue(scoreEvent);
         }
 
-        private static GovernanceViolationSummary[] ExtractViolations(Dictionary<string, object> fields)
+        private static IReadOnlyList<ViolationDto> ExtractViolations(Dictionary<string, object> fields)
         {
             if (!fields.TryGetValue("GovernanceViolations", out var rawViolations) || rawViolations == null)
-                return Array.Empty<GovernanceViolationSummary>();
+                return Array.Empty<ViolationDto>();
 
             if (rawViolations is IEnumerable enumerable)
             {
-                var list = new List<GovernanceViolationSummary>();
+                var list = new List<ViolationDto>();
                 foreach (var item in enumerable)
                 {
                     list.Add(ConvertViolation(item));
@@ -236,33 +235,33 @@ namespace Cerbi
                 return list.ToArray();
             }
 
-            return Array.Empty<GovernanceViolationSummary>();
+            return Array.Empty<ViolationDto>();
         }
 
-        private static GovernanceViolationSummary ConvertViolation(object? violation)
+        private static ViolationDto ConvertViolation(object? violation)
         {
             try
             {
                 if (violation is null)
                 {
-                    return Activator.CreateInstance<GovernanceViolationSummary>()!;
+                    return Activator.CreateInstance<ViolationDto>()!;
                 }
 
                 if (violation is string s)
                 {
-                    var payload = new { RuleId = s, Message = s, Raw = s };
+                    var payload = new { RuleId = s, Message = s };
                     var json = JsonSerializer.Serialize(payload, ViolationJsonOptions);
-                    return JsonSerializer.Deserialize<GovernanceViolationSummary>(json, ViolationJsonOptions)
-                           ?? Activator.CreateInstance<GovernanceViolationSummary>()!;
+                    return JsonSerializer.Deserialize<ViolationDto>(json, ViolationJsonOptions)
+                           ?? Activator.CreateInstance<ViolationDto>()!;
                 }
 
                 var serialized = JsonSerializer.Serialize(violation, ViolationJsonOptions);
-                return JsonSerializer.Deserialize<GovernanceViolationSummary>(serialized, ViolationJsonOptions)
-                       ?? Activator.CreateInstance<GovernanceViolationSummary>()!;
+                return JsonSerializer.Deserialize<ViolationDto>(serialized, ViolationJsonOptions)
+                       ?? Activator.CreateInstance<ViolationDto>()!;
             }
             catch
             {
-                return Activator.CreateInstance<GovernanceViolationSummary>()!;
+                return Activator.CreateInstance<ViolationDto>()!;
             }
         }
 
@@ -275,12 +274,10 @@ namespace Cerbi
             return null;
         }
 
-        private static string GenerateDeterministicId(string? tenantId, string appName, string logId)
+        private static int? ToScoreBucket(double impact)
         {
-            var input = $"{tenantId ?? string.Empty}|{appName}|{logId}";
-            using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
-            return Convert.ToHexString(hash);
+            if (double.IsNaN(impact) || double.IsInfinity(impact)) return null;
+            return (int)Math.Round(impact, MidpointRounding.AwayFromZero);
         }
 
         private static IEnumerable<string> EnumerateWithFirst(IEnumerable<string> source, string first)

@@ -21,6 +21,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Cerbi.CerbiShield.Contracts" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>
