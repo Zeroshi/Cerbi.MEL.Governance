@@ -88,6 +88,80 @@ namespace Cerbi.Tests
             Assert.True(actualDoc.RootElement.ToString() == referenceDoc.RootElement.ToString(), "Serialized payloads diverged");
         }
 
+        [Fact]
+        public void Logging_forbidden_field_emits_contract_scoring_event_json()
+        {
+            var settings = new CerbiGovernanceMELSettings
+            {
+                AppName = "mel-app",
+                Environment = "int",
+                Profile = "security",
+                EnforcementMode = GovernanceEnforcementMode.Strict,
+                ScoreShipping = new ScoreShippingOptions { Enabled = true, LicenseAllowsScoring = true },
+                ScoringIngestion = new ScoringIngestionOptions { Mode = ScoringIngestionMode.HttpOnly }
+            };
+
+            var topic = settings.Profile;
+            var innerLogger = new Mock<ILogger>();
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), topic, new FileGovernanceSource("dummy.json")) { CallBase = true };
+
+            var shipper = new CapturingShipper();
+            var logger = new CerbiGovernanceLogger(innerLogger.Object, validator.Object, topic, null, () => true, shipper, settings);
+
+            var state = new Dictionary<string, object>
+            {
+                ["TenantId"] = "tenant-001",
+                ["LogId"] = "log-888",
+                ["CorrelationId"] = "corr-999",
+                ["GovernanceScoreImpact"] = 8.2,
+                ["forbidden_field"] = "sensitive",
+                ["GovernanceViolations"] = new[] { "ForbiddenField:sensitive" }
+            };
+
+            var tryShip = typeof(CerbiGovernanceLogger).GetMethod("TryShipScore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            tryShip!.Invoke(logger, new object[] { state, topic, new EventId(88, "forbidden"), LogLevel.Error });
+
+            var actual = Assert.Single(shipper.Events);
+            Assert.NotEmpty(actual.Violations);
+
+            Assert.Equal(settings.AppName, actual.AppName);
+            Assert.Equal(settings.Environment, actual.Environment);
+            Assert.Equal(topic, actual.GovernanceProfile);
+            Assert.Equal(settings.EnforcementMode.ToString(), actual.GovernanceMode);
+            Assert.False(actual.GovernanceFlags?.GovernanceRelaxed ?? true);
+            Assert.NotEqual(default, actual.TimestampUtc);
+
+            var expected = new ScoringEventDto
+            {
+                SchemaVersion = ContractVersions.ScoringEventSchemaVersion,
+                TenantId = state["TenantId"].ToString(),
+                AppName = settings.AppName,
+                Environment = settings.Environment,
+                Runtime = actual.Runtime,
+                TimestampUtc = actual.TimestampUtc,
+                LogId = state["LogId"].ToString(),
+                CorrelationId = state["CorrelationId"].ToString(),
+                GovernanceProfile = topic,
+                GovernanceMode = settings.EnforcementMode.ToString(),
+                LogLevel = LogLevel.Error.ToString(),
+                Score = new ScoreBreakdownDto
+                {
+                    Overall = (int)Math.Round((double)state["GovernanceScoreImpact"], MidpointRounding.AwayFromZero),
+                    Governance = (int)Math.Round((double)state["GovernanceScoreImpact"], MidpointRounding.AwayFromZero)
+                },
+                GovernanceFlags = new GovernanceFlagsDto { GovernanceRelaxed = false },
+                Violations = actual.Violations
+            };
+
+            var options = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = null,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            Assert.Equal(JsonSerializer.Serialize(expected, options), JsonSerializer.Serialize(actual, options));
+        }
+
         private sealed class CapturingShipper : IScoreShipper
         {
             public List<ScoringEventDto> Events { get; } = new();

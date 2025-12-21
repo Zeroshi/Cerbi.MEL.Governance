@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Cerbi;
-using Cerbi.Contracts;
+using Cerbi.Contracts.Contracts;
 using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using Moq;

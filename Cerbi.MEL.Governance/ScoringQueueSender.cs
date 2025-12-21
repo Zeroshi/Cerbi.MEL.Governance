@@ -1,4 +1,4 @@
-using Cerbi.Contracts;
+using Cerbi.Contracts.Contracts;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
