@@ -162,6 +162,75 @@ namespace Cerbi.Tests
             Assert.Equal(JsonSerializer.Serialize(expected, options), JsonSerializer.Serialize(actual, options));
         }
 
+        [Fact]
+        public void Envelope_factory_forces_contract_schema_version()
+        {
+            var evt = new ScoringEventDto
+            {
+                SchemaVersion = 999,
+                TenantId = "t",
+                AppName = "app",
+                Environment = "env",
+                Runtime = ".NET x",
+                TimestampUtc = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+                LogId = "log",
+                CorrelationId = "corr",
+                GovernanceProfile = "topic",
+                GovernanceMode = "Strict",
+                LogLevel = "Warning",
+                Score = new ScoreBreakdownDto(),
+                Violations = Array.Empty<ViolationDto>(),
+                GovernanceFlags = new GovernanceFlagsDto()
+            };
+
+            var envelope = ScoringEnvelopeFactory.Create(evt);
+
+            Assert.Equal(ContractVersions.ScoringEventSchemaVersion, envelope.Payload?.SchemaVersion);
+            Assert.Equal(ContractVersions.ScoringEnvelopeVersion, envelope.EnvelopeVersion);
+        }
+
+        [Fact]
+        public void Logger_enriches_scoring_event_with_required_fields()
+        {
+            var settings = new CerbiGovernanceMELSettings
+            {
+                AppName = "enrich-app",
+                Environment = "test",
+                Profile = "profile-A",
+                ScoreShipping = new ScoreShippingOptions { Enabled = true, LicenseAllowsScoring = true },
+                ScoringIngestion = new ScoringIngestionOptions { Mode = ScoringIngestionMode.HttpOnly }
+            };
+
+            var innerLogger = new Mock<ILogger>().Object;
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource("dummy.json")) { CallBase = true };
+            var shipper = new CapturingShipper();
+            var logger = new CerbiGovernanceLogger(innerLogger, validator.Object, settings.Profile, null, () => true, shipper, settings);
+
+            var state = new Dictionary<string, object>
+            {
+                ["GovernanceScoreImpact"] = 3.7,
+                ["GovernanceViolations"] = new[] { "R1" }
+            };
+
+            var method = typeof(CerbiGovernanceLogger).GetMethod("TryShipScore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            method!.Invoke(logger, new object[] { state, settings.Profile, new EventId(5, "enrich"), LogLevel.Warning });
+
+            var ev = Assert.Single(shipper.Events);
+
+            Assert.False(string.IsNullOrWhiteSpace(ev.AppName));
+            Assert.False(string.IsNullOrWhiteSpace(ev.Environment));
+            Assert.False(string.IsNullOrWhiteSpace(ev.Runtime));
+            Assert.NotEqual(default, ev.TimestampUtc);
+            Assert.False(string.IsNullOrWhiteSpace(ev.CorrelationId));
+            Assert.False(string.IsNullOrWhiteSpace(ev.GovernanceProfile));
+            Assert.False(string.IsNullOrWhiteSpace(ev.GovernanceMode));
+            Assert.False(string.IsNullOrWhiteSpace(ev.LogLevel));
+            Assert.Equal(ContractVersions.ScoringEventSchemaVersion, ev.SchemaVersion);
+            Assert.NotNull(ev.Violations);
+            Assert.NotEmpty(ev.Violations);
+            Assert.False(string.IsNullOrWhiteSpace(ev.Violations![0].RuleId ?? ev.Violations[0].Message));
+        }
+
         private sealed class CapturingShipper : IScoreShipper
         {
             public List<ScoringEventDto> Events { get; } = new();

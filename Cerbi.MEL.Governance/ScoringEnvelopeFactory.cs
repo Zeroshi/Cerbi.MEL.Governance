@@ -17,17 +17,17 @@ namespace Cerbi.Serilog.Governance
 
             var normalized = new ScoringEventDto
             {
-                SchemaVersion = scoreEvent.SchemaVersion == 0 ? ContractVersions.ScoringEventSchemaVersion : scoreEvent.SchemaVersion,
+                SchemaVersion = ContractVersions.ScoringEventSchemaVersion,
                 TenantId = scoreEvent.TenantId,
-                AppName = scoreEvent.AppName,
-                Environment = scoreEvent.Environment,
-                Runtime = scoreEvent.Runtime ?? RuntimeSignature,
+                AppName = scoreEvent.AppName ?? string.Empty,
+                Environment = scoreEvent.Environment ?? string.Empty,
+                Runtime = string.IsNullOrWhiteSpace(scoreEvent.Runtime) ? RuntimeSignature : scoreEvent.Runtime,
                 TimestampUtc = scoreEvent.TimestampUtc == default ? DateTime.UtcNow : scoreEvent.TimestampUtc,
-                LogId = scoreEvent.LogId,
-                CorrelationId = scoreEvent.CorrelationId,
-                GovernanceProfile = scoreEvent.GovernanceProfile,
-                GovernanceMode = scoreEvent.GovernanceMode,
-                LogLevel = scoreEvent.LogLevel,
+                LogId = scoreEvent.LogId ?? string.Empty,
+                CorrelationId = scoreEvent.CorrelationId ?? string.Empty,
+                GovernanceProfile = scoreEvent.GovernanceProfile ?? string.Empty,
+                GovernanceMode = scoreEvent.GovernanceMode ?? string.Empty,
+                LogLevel = scoreEvent.LogLevel ?? string.Empty,
                 Score = scoreEvent.Score,
                 Violations = scoreEvent.Violations,
                 GovernanceFlags = scoreEvent.GovernanceFlags

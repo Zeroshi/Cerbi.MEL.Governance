@@ -218,7 +218,7 @@ namespace Cerbi
             }
             var tenantId = ExtractString(fields, "TenantId");
             var logId = ExtractString(fields, "LogId") ?? (eventId.Id != 0 ? eventId.Id.ToString(CultureInfo.InvariantCulture) : Guid.NewGuid().ToString("N"));
-            var correlationId = ExtractString(fields, "CorrelationId") ?? ExtractString(fields, "correlationId") ?? Activity.Current?.TraceId.ToString();
+            var correlationId = ExtractString(fields, "CorrelationId") ?? ExtractString(fields, "correlationId") ?? Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
 
             var summaries = ExtractViolations(fields);
 
