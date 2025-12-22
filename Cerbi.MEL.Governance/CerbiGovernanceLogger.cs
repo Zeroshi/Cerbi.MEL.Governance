@@ -117,50 +117,69 @@ namespace Cerbi
 
             //3) Extract structured fields from “state” if possible (low-allocation)
             var fields = ExtractFields(state);
+            var relaxRequested = IsRelaxed(fields);
+            var originalFields = CloneFields(fields);
 
             //4) Inject the “CerbiTopic” so the validator knows which profile to use
             fields["CerbiTopic"] = topic;
 
-            //5) Run governance-validation
+            //5) Run governance-validation and work from the validated view to keep redactions/metadata
             var validated = _validator.Validate(fields);
+            var resultFields = CloneFields(validated ?? fields);
+            if (originalFields.TryGetValue("Relax", out var relaxOriginal) && !resultFields.ContainsKey("Relax"))
+            {
+                resultFields["Relax"] = relaxOriginal;
+            }
 
-            //6) If there are violations, record them; otherwise record status depending on mode
+            //6) Honor Relax semantics (call-site Relax or validator-produced flag)
+            var isRelaxed = relaxRequested || IsRelaxed(resultFields) || IsRelaxed(originalFields);
+            if (isRelaxed)
+            {
+                resultFields["GovernanceRelaxed"] = true;
+                resultFields["GovernanceScoreImpact"] = 0d;
+            }
+            resultFields["__RelaxComputed"] = isRelaxed;
+
+            //7) Detect violations (skip if relaxed)
             bool hasViolation = false;
             IEnumerable<string>? violationsEnum = null;
-            if (validated.TryGetValue("GovernanceViolations", out var v) && v is IEnumerable<string> cand)
+            if (!isRelaxed && TryGetViolations(resultFields, out var vioArray))
             {
-                using var e = cand.GetEnumerator();
-                if (e.MoveNext())
+                if (vioArray.Length > 0)
                 {
                     hasViolation = true;
-                    violationsEnum = EnumerateWithFirst(cand, e.Current);
+                    violationsEnum = vioArray;
                 }
             }
 
             if (hasViolation)
             {
-                fields["GovernanceViolations"] = violationsEnum!.ToArray();
-                fields["GovernanceRelaxed"] = false;
-                fields["GovernanceProfileUsed"] = topic;
-                fields["GovernanceMode"] = _settings.EnforcementMode.ToString();
+                resultFields["GovernanceViolations"] = violationsEnum!.ToArray();
+                resultFields["GovernanceRelaxed"] = false;
+                resultFields["GovernanceProfileUsed"] = topic;
+                resultFields["GovernanceMode"] = _settings.EnforcementMode.ToString();
             }
             else
             {
-                fields["GovernanceProfileUsed"] = topic;
-                if (_settings.EnforcementMode == GovernanceEnforcementMode.Strict)
+                resultFields["GovernanceProfileUsed"] = topic;
+                if (_settings.EnforcementMode == GovernanceEnforcementMode.Strict && !isRelaxed)
                 {
-                    fields["GovernanceEnforced"] = true;
+                    resultFields["GovernanceEnforced"] = true;
                 }
-                fields["GovernanceMode"] = _settings.EnforcementMode.ToString();
+                resultFields["GovernanceMode"] = _settings.EnforcementMode.ToString();
+                if (isRelaxed)
+                {
+                    resultFields["GovernanceRelaxed"] = true;
+                }
             }
 
-            //7a) Always log the original message exactly as the caller wrote it
+            //8a) Always log the original message exactly as the caller wrote it
             _inner.Log(logLevel, eventId, state, exception, formatter);
 
-            //7b) Only if there was at least one violation, serialize “fields” to JSON and log it
+            //8b) Only if there was at least one violation, serialize validated “resultFields” to JSON and log it
             if (hasViolation)
             {
-                string jsonPayload = JsonSerializer.Serialize(fields, JsonOpts);
+                string jsonPayload = JsonSerializer.Serialize(resultFields, JsonOpts);
                 _inner.Log(
                     logLevel,
                     eventId,
@@ -170,8 +189,8 @@ namespace Cerbi
                 );
             }
 
-            // Score shipping extraction (non-blocking)
-            TryShipScore(fields, topic, eventId, logLevel);
+            // Score shipping extraction (non-blocking) from validated fields
+            TryShipScore(resultFields, topic, eventId, logLevel);
         }
 
         public void SetScopeProvider(IExternalScopeProvider scopeProvider)
@@ -185,7 +204,18 @@ namespace Cerbi
             if (!fields.TryGetValue("GovernanceScoreImpact", out var rawImpact)) return;
             if (!double.TryParse(rawImpact?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var impact)) return;
 
-            var relaxed = fields.TryGetValue("GovernanceRelaxed", out var r) && r is bool b && b;
+            var relaxed = IsRelaxed(fields) || (fields.TryGetValue("__RelaxComputed", out var relaxComputed) && relaxComputed is bool rb && rb);
+            if (!relaxed && fields.TryGetValue("__RelaxComputed", out var relaxComputedStr))
+            {
+                if (bool.TryParse(relaxComputedStr?.ToString(), out var parsedRelax))
+                {
+                    relaxed = parsedRelax;
+                }
+            }
+            if (relaxed)
+            {
+                impact = 0d;
+            }
             var tenantId = ExtractString(fields, "TenantId");
             var logId = ExtractString(fields, "LogId") ?? (eventId.Id != 0 ? eventId.Id.ToString(CultureInfo.InvariantCulture) : Guid.NewGuid().ToString("N"));
             var correlationId = ExtractString(fields, "CorrelationId") ?? ExtractString(fields, "correlationId") ?? Activity.Current?.TraceId.ToString();
@@ -247,6 +277,11 @@ namespace Cerbi
                     return Activator.CreateInstance<ViolationDto>()!;
                 }
 
+                if (violation is ViolationDto dto)
+                {
+                    return dto;
+                }
+
                 if (violation is string s)
                 {
                     var payload = new { RuleId = s, Message = s };
@@ -263,6 +298,70 @@ namespace Cerbi
             {
                 return Activator.CreateInstance<ViolationDto>()!;
             }
+        }
+
+        private static bool TryGetViolations(Dictionary<string, object> fields, out string[] violations)
+        {
+            if (fields.TryGetValue("GovernanceViolations", out var raw) && raw != null)
+            {
+                if (raw is string s)
+                {
+                    violations = new[] { s };
+                    return true;
+                }
+
+                if (raw is IEnumerable enumerable)
+                {
+                    var list = new List<string>();
+                    foreach (var item in enumerable)
+                    {
+                        if (item is null) continue;
+                        if (item is string str)
+                        {
+                            list.Add(str);
+                        }
+                        else
+                        {
+                            list.Add(item.ToString()!);
+                        }
+                    }
+                    violations = list.ToArray();
+                    return true;
+                }
+            }
+
+            violations = Array.Empty<string>();
+            return false;
+        }
+
+        private static Dictionary<string, object> CloneFields(IDictionary<string, object> source)
+        {
+            if (source is Dictionary<string, object> dict && dict.Comparer == StringComparer.Ordinal)
+            {
+                return new Dictionary<string, object>(dict, StringComparer.Ordinal);
+            }
+
+            var clone = new Dictionary<string, object>(StringComparer.Ordinal);
+            foreach (var kvp in source)
+            {
+                clone[kvp.Key] = kvp.Value!;
+            }
+            return clone;
+        }
+
+        private static bool IsRelaxed(IDictionary<string, object> fields)
+        {
+            return TryGetBool(fields, "GovernanceRelaxed") || TryGetBool(fields, "Relax");
+        }
+
+        private static bool TryGetBool(IDictionary<string, object> fields, string key)
+        {
+            if (fields.TryGetValue(key, out var raw) && raw is not null)
+            {
+                if (raw is bool b) return b;
+                if (bool.TryParse(raw.ToString(), out var parsed)) return parsed;
+            }
+            return false;
         }
 
         private static string? ExtractString(Dictionary<string, object> fields, string key)
