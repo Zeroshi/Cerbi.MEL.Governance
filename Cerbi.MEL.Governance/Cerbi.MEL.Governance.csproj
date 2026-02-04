@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
-    <!-- ─── NuGet metadata ─────────────────────────────────────────────────────── -->
+    <!-- --- NuGet metadata ------------------------------------------------------- -->
     <Version>1.0.36</Version>
     <PackageId>Cerbi.MEL.Governance</PackageId>
     <Authors>Thomas Nelson</Authors>
@@ -19,11 +19,11 @@
     <PackageProjectUrl>https://cerbi.io</PackageProjectUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <!-- ───────────────────────────────────────────────────────────────────────────── -->
+    <!-- ----------------------------------------------------------------------------- -->
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Core Cerbi “engine” packages -->
+    <!-- Core Cerbi �engine� packages -->
     <PackageReference Include="Cerbi.Governance.Core"    Version="1.0.2" />
     <PackageReference Include="Cerbi.Governance.Runtime" Version="1.1.1" />
     <PackageReference Include="Cerbi.CerbiShield.Contracts" Version="0.2.0" />
@@ -32,7 +32,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console"      Version="9.0.5" />
 
-    <!-- Dependency‐injection abstractions (so our ILoggingBuilder extension can register services) -->
+    <!-- Dependency-injection abstractions (so our ILoggingBuilder extension can register services) -->
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.5" />
     <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
   </ItemGroup>
