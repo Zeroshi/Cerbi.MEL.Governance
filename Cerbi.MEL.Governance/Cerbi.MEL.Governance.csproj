@@ -7,7 +7,7 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
-    <!-- --- NuGet metadata ------------------------------------------------------- -->
+    <!-- NuGet metadata -->
     <Version>1.0.36</Version>
     <PackageId>Cerbi.MEL.Governance</PackageId>
     <Authors>Thomas Nelson</Authors>
@@ -19,7 +19,7 @@
     <PackageProjectUrl>https://cerbi.io</PackageProjectUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-    <!-- ----------------------------------------------------------------------------- -->
+    <!-- end NuGet metadata -->
   </PropertyGroup>
 
   <ItemGroup>
