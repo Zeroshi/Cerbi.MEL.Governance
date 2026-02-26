@@ -117,6 +117,48 @@ If governance enrichment is enabled, the logger can tag entries like:
 
 ---
 
+## 📊 CerbiShield Scoring Integration (v1.1)
+
+The MEL governance SDK ships **scoring identity metadata** with every governance event, enabling end-to-end traceability in CerbiShield dashboards.
+
+### Identity Fields
+
+| Field | Source | Purpose |
+|-------|--------|---------|
+| `ServiceName` | `CerbiGovernanceMELSettings.ServiceName` | Logical service name (e.g., `OrderService`) |
+| `AppVersion` | `CerbiGovernanceMELSettings.AppVersion` | Deployed version (e.g., `1.2.3`) |
+| `InstanceId` | `CerbiGovernanceMELSettings.InstanceId` | Container/pod instance identifier |
+| `DeploymentId` | `CerbiGovernanceMELSettings.DeploymentId` | Release/deployment tracking ID |
+| `ProfileName` | Governance profile name (topic) | Stamped onto every `ViolationDto` |
+| `AppName` | `CerbiGovernanceMELSettings.AppName` | Stamped onto every `ViolationDto` |
+
+### Configuration
+
+```csharp
+builder.Logging.AddCerbiGovernance(options =>
+{
+    options.Profile = "Orders";
+    options.ConfigPath = "cerbi_governance.json";
+    options.AppName = "OrderService";
+    options.Environment = "Production";
+    options.ServiceName = "order-api";
+    options.AppVersion = "1.2.3";
+    options.InstanceId = Environment.GetEnvironmentVariable("HOSTNAME");
+    options.DeploymentId = Environment.GetEnvironmentVariable("DEPLOYMENT_ID");
+    options.ScoreShipping = new ScoreShippingOptions
+    {
+        Enabled = true,
+        LicenseAllowsScoring = true
+    };
+});
+```
+
+All identity fields flow through:
+1. `CerbiGovernanceMELSettings` → `ScoringEventDto` → `ScoringEnvelopeFactory`
+2. Each `ViolationDto` is stamped with `ProfileName` and `AppName` for downstream linkage.
+
+---
+
 ## 🔗 Related Projects
 
 * 🌐 [CerbiStream](https://www.nuget.org/packages/CerbiStream) — Core logging library
