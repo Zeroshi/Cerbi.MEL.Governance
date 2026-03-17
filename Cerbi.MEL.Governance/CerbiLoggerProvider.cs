@@ -8,7 +8,7 @@ using System.Net.Http;
 namespace Cerbi
 {
     /// <summary>
-    /// This provider wraps a ConsoleLoggerProvider (the “real” console sink)
+    /// This provider wraps a ConsoleLoggerProvider (the "real" console sink)
     /// and injects CerbiGovernanceLogger on top of it.
     /// Owns a ScoreShipper for governance score events.
     /// </summary>
@@ -23,7 +23,7 @@ namespace Cerbi
 
         // Legacy constructor kept for backward compatibility (tests etc.)
         public CerbiLoggerProvider(ConsoleLoggerProvider consoleProvider, RuntimeGovernanceValidator validator, string profileName)
-            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings(), new ScoreShipper(new HttpClient(), new ScoreShippingOptions())) { }
+            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings(), new Cerbi.Serilog.Governance.ScoreShipper(new HttpClient(), new Cerbi.Serilog.Governance.ScoreShippingOptions())) { }
 
         public CerbiLoggerProvider(
             ConsoleLoggerProvider consoleProvider,

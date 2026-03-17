@@ -52,7 +52,7 @@ namespace Cerbi
                     client = new HttpClient();
                 }
 
-                var shipper = new ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion);
+                var shipper = new Cerbi.Serilog.Governance.ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion);
 
                 return new CerbiLoggerProvider(
                     consoleProv,

@@ -56,7 +56,7 @@ namespace Cerbi
             _categoryName = categoryName ?? string.Empty;
             _isGovernanceEnabled = isGovernanceEnabled;
             _settings = settings ?? new CerbiGovernanceMELSettings();
-            _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
+            _scoreShipper = shipper ?? new Cerbi.Serilog.Governance.ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -115,12 +115,12 @@ namespace Cerbi
                 return;
             }
 
-            //3) Extract structured fields from “state” if possible (low-allocation)
+            //3) Extract structured fields from "state" if possible (low-allocation)
             var fields = ExtractFields(state);
             var relaxRequested = IsRelaxed(fields);
             var originalFields = CloneFields(fields);
 
-            //4) Inject the “CerbiTopic” so the validator knows which profile to use
+            //4) Inject the "CerbiTopic" so the validator knows which profile to use
             fields["CerbiTopic"] = topic;
 
             //5) Run governance-validation and work from the validated view to keep redactions/metadata
@@ -176,7 +176,7 @@ namespace Cerbi
             //8a) Always log the original message exactly as the caller wrote it
             _inner.Log(logLevel, eventId, state, exception, formatter);
 
-            //8b) Only if there was at least one violation, serialize validated “resultFields” to JSON and log it
+            //8b) Only if there was at least one violation, serialize validated "resultFields" to JSON and log it
             if (hasViolation)
             {
                 string jsonPayload = JsonSerializer.Serialize(resultFields, JsonOpts);
