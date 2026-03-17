@@ -23,9 +23,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Core Cerbi “engine” packages -->
-    <PackageReference Include="Cerbi.Governance.Core"    Version="1.0.2" />
-    <PackageReference Include="Cerbi.Governance.Runtime" Version="1.1.1" />
+    <!-- Core Cerbi "engine" packages -->
+    <PackageReference Include="Cerbi.Governance.Core"    Version="2.2.*" />
+    <PackageReference Include="Cerbi.Governance.Runtime" Version="2.0.*" />
     <PackageReference Include="Cerbi.CerbiShield.Contracts" Version="0.2.0" />
 
     <!-- Logging abstractions + console sink (we wrap this sink at runtime) -->
