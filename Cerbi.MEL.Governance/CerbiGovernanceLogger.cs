@@ -1,6 +1,7 @@
-﻿using Cerbi.Serilog.Governance;
+​​using Cerbi.Serilog.Governance;
 using Cerbi.Governance;
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts;
+using CerbiShield.Contracts.Scoring;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections;

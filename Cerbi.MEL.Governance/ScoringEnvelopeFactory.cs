@@ -1,7 +1,8 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts;
+using CerbiShield.Contracts.Scoring;
 
 namespace Cerbi.Serilog.Governance
 {
@@ -37,12 +38,9 @@ namespace Cerbi.Serilog.Governance
 
             return new ScoringQueueEnvelopeDto
             {
-                EnvelopeVersion = ContractVersions.ScoringEnvelopeVersion,
-                MessageType = MessageType,
-                Producer = normalized.AppName,
-                ProducerVersion = ProducerVersion,
-                IdempotencyKey = idempotency,
-                EnqueuedUtc = DateTime.UtcNow,
+                Version = ContractVersions.ScoringEnvelopeVersion,
+                MessageId = Guid.NewGuid().ToString("N"),
+                EnqueuedAtUtc = DateTime.UtcNow,
                 Payload = normalized
             };
         }

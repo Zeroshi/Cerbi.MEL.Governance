@@ -12,7 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using Cerbi;
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts.Scoring;
 
 namespace Cerbi.Serilog.Governance
 {
@@ -40,6 +40,9 @@ namespace Cerbi.Serilog.Governance
         private int _sending;
 
         public ScoreShipper(HttpClient httpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions = null)
+            : this(httpClient, options, ingestionOptions, null) { }
+
+        internal ScoreShipper(HttpClient httpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions, IScoringQueueSender? queueSender)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _options = options ?? new ScoreShippingOptions();
@@ -48,11 +51,26 @@ namespace Cerbi.Serilog.Governance
             _worker = Task.Run(WorkerLoop);
         }
 
-        public void Enqueue(ScoringEventDto ev)
+        public virtual void Enqueue(ScoringEventDto ev)
         {
             if (!_options.Enabled || !_options.LicenseAllowsScoring) return;
             if (_queue.Count >= _options.MaxQueueSize) return;
             _queue.Enqueue(ev);
+        }
+
+        // Overload accepting envelope directly (used by tests)
+        public virtual void Enqueue(ScoringQueueEnvelopeDto envelope)
+        {
+            if (!_options.Enabled || !_options.LicenseAllowsScoring) return;
+            if (envelope?.Payload != null)
+            {
+                _queue.Enqueue(envelope.Payload);
+            }
+        }
+
+        internal void FlushForTesting()
+        {
+            FlushBatchAsync().GetAwaiter().GetResult();
         }
 
         private async Task WorkerLoop()
@@ -192,7 +210,7 @@ namespace Cerbi.Serilog.Governance
             var message = new ServiceBusMessage(Encoding.UTF8.GetBytes(payload))
             {
                 ContentType = "application/json",
-                MessageId = envelope.IdempotencyKey ?? Guid.NewGuid().ToString("N"),
+                MessageId = envelope.MessageId ?? Guid.NewGuid().ToString("N"),
                 CorrelationId = envelope.Payload?.CorrelationId,
                 Subject = envelope.Payload?.GovernanceProfile
             };

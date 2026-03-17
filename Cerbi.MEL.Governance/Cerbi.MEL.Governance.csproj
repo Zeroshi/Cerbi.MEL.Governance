@@ -8,7 +8,7 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
 
     <!-- NuGet metadata -->
-    <Version>1.0.36</Version>
+    <Version>1.1.0</Version>
     <PackageId>Cerbi.MEL.Governance</PackageId>
     <Authors>Thomas Nelson</Authors>
     <Company>Cerbi LLC</Company>
@@ -17,6 +17,7 @@
     <RepositoryUrl>https://github.com/Zeroshi/Cerbi.MEL.Governance</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://cerbi.io</PackageProjectUrl>
+    <PackageReleaseNotes>v1.1.0: Migrated to CerbiShield.Contracts v1.2.1 canonical contracts via Cerbi.Governance.Core v2.2.29 and Cerbi.GovernanceRuntime v2.0.23. Breaking: old Cerbi.CerbiShield.Contracts namespace removed.</PackageReleaseNotes>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!-- end NuGet metadata -->
@@ -24,9 +25,8 @@
 
   <ItemGroup>
     <!-- Core Cerbi "engine" packages -->
-    <PackageReference Include="Cerbi.Governance.Core"    Version="2.2.*" />
-    <PackageReference Include="Cerbi.Governance.Runtime" Version="2.0.*" />
-    <PackageReference Include="Cerbi.CerbiShield.Contracts" Version="0.2.0" />
+    <PackageReference Include="Cerbi.Governance.Core"    Version="2.2.29" />
+    <PackageReference Include="Cerbi.Governance.Runtime" Version="2.0.23" />
 
     <!-- Logging abstractions + console sink (we wrap this sink at runtime) -->
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
@@ -36,6 +36,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.5" />
     <PackageReference Include="Azure.Messaging.ServiceBus" Version="7.18.0" />
   </ItemGroup>
+
+  <!-- CerbiShield.Contracts v1.2.1 comes transitively via Cerbi.Governance.Core -->
 
   <ItemGroup>
     <Compile Remove="ScoreShipper.cs" />

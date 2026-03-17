@@ -1,4 +1,4 @@
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts.Scoring;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -67,11 +67,11 @@ namespace Cerbi
 
             var brokerProperties = new Dictionary<string, string?>
             {
-                ["MessageId"] = envelope.IdempotencyKey,
+                ["MessageId"] = envelope.MessageId,
             };
-            if (!string.IsNullOrWhiteSpace(envelope.CorrelationId))
+            if (!string.IsNullOrWhiteSpace(envelope.Payload?.CorrelationId))
             {
-                brokerProperties["CorrelationId"] = envelope.CorrelationId;
+                brokerProperties["CorrelationId"] = envelope.Payload?.CorrelationId;
             }
             request.Headers.TryAddWithoutValidation("BrokerProperties", JsonSerializer.Serialize(brokerProperties));
 

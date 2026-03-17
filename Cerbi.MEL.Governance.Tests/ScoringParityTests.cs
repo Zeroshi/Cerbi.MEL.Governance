@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Cerbi;
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts;
+using CerbiShield.Contracts.Scoring;
 using Cerbi.Governance;
 using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
@@ -186,7 +187,7 @@ namespace Cerbi.Tests
             var envelope = ScoringEnvelopeFactory.Create(evt);
 
             Assert.Equal(ContractVersions.ScoringEventSchemaVersion, envelope.Payload?.SchemaVersion);
-            Assert.Equal(ContractVersions.ScoringEnvelopeVersion, envelope.EnvelopeVersion);
+            Assert.Equal(ContractVersions.ScoringEnvelopeVersion, envelope.Version);
         }
 
         [Fact]

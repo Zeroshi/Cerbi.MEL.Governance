@@ -21,8 +21,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Cerbi.CerbiShield.Contracts" Version="0.2.0" />
   </ItemGroup>
+
+  <!-- CerbiShield.Contracts v1.2.1 comes transitively via project reference -->
 
   <ItemGroup>
     <ProjectReference Include="..\Cerbi.MEL.Governance\Cerbi.MEL.Governance.csproj" />
