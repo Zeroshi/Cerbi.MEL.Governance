@@ -11,7 +11,6 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
-using Cerbi;
 using CerbiShield.Contracts.Scoring;
 
 namespace Cerbi.Serilog.Governance
@@ -40,9 +39,6 @@ namespace Cerbi.Serilog.Governance
         private int _sending;
 
         public ScoreShipper(HttpClient httpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions = null)
-            : this(httpClient, options, ingestionOptions, null) { }
-
-        internal ScoreShipper(HttpClient httpClient, ScoreShippingOptions options, ScoringIngestionOptions? ingestionOptions, IScoringQueueSender? queueSender)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
             _options = options ?? new ScoreShippingOptions();
