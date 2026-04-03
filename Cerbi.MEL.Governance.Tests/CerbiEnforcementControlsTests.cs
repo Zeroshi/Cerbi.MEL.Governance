@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Cerbi;
 using CerbiShield.Contracts.Scoring;
 using Cerbi.Governance;
-using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
