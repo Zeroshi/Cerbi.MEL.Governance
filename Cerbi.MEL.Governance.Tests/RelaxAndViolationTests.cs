@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Reflection;
 using Cerbi;
 using Cerbi.Governance;
-using Cerbi.Serilog.Governance;
-using CerbiShield.Contracts.Scoring;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -79,8 +77,8 @@ namespace Cerbi.Tests
 
         private sealed class CapturingShipper : IScoreShipper
         {
-            public List<ScoringEventDto> Events { get; } = new();
-            public void Enqueue(ScoringEventDto ev) => Events.Add(ev);
+            public List<CerbiShield.Contracts.Scoring.ScoringEventDto> Events { get; } = new();
+            public void Enqueue(CerbiShield.Contracts.Scoring.ScoringEventDto ev) => Events.Add(ev);
             public void Dispose() { }
         }
     }
