@@ -1,4 +1,4 @@
-​​using Cerbi.Serilog.Governance;
+using Cerbi.Serilog.Governance;
 using Cerbi.Governance;
 using CerbiShield.Contracts;
 using CerbiShield.Contracts.Scoring;
