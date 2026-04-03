@@ -51,7 +51,7 @@ namespace Cerbi.Serilog.Governance
             _worker = Task.Run(WorkerLoop);
         }
 
-        public virtual void Enqueue(ScoringEventDto ev)
+        public void Enqueue(ScoringEventDto ev)
         {
             if (!_options.Enabled || !_options.LicenseAllowsScoring) return;
             if (_queue.Count >= _options.MaxQueueSize) return;
@@ -59,7 +59,7 @@ namespace Cerbi.Serilog.Governance
         }
 
         // Overload accepting envelope directly (used by tests)
-        public virtual void Enqueue(ScoringQueueEnvelopeDto envelope)
+        public void Enqueue(ScoringQueueEnvelopeDto envelope)
         {
             if (!_options.Enabled || !_options.LicenseAllowsScoring) return;
             if (envelope?.Payload != null)
