@@ -4,7 +4,7 @@ using System.Text;
 using CerbiShield.Contracts;
 using CerbiShield.Contracts.Scoring;
 
-namespace Cerbi.Serilog.Governance
+namespace Cerbi
 {
     internal static class ScoringEnvelopeFactory
     {

@@ -11,9 +11,10 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
+using Cerbi;
 using CerbiShield.Contracts.Scoring;
 
-namespace Cerbi.Serilog.Governance
+namespace Cerbi
 {
     public interface IScoreShipper : IDisposable
     {
