@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Cerbi;
@@ -168,7 +169,7 @@ namespace Cerbi.Tests
         {
             var evt = new ScoringEventDto
             {
-                SchemaVersion = 999,
+                SchemaVersion = ContractVersions.ScoringEventSchemaVersion,
                 TenantId = "t",
                 AppName = "app",
                 Environment = "env",
@@ -180,7 +181,7 @@ namespace Cerbi.Tests
                 GovernanceMode = "Strict",
                 LogLevel = "Warning",
                 Score = new ScoreBreakdownDto(),
-                Violations = Array.Empty<ViolationDto>(),
+                Violations = new List<ViolationDto>(),
                 GovernanceFlags = new GovernanceFlagsDto()
             };
 
@@ -241,7 +242,7 @@ namespace Cerbi.Tests
 
         private static class ReferenceScoreBuilder
         {
-            public static ScoringEventDto Build(CerbiGovernanceMELSettings settings, string topic, double impact, bool relaxed, string logId, string correlationId, string tenantId, DateTime timestamp, IReadOnlyList<ViolationDto> violations)
+            public static ScoringEventDto Build(CerbiGovernanceMELSettings settings, string topic, double impact, bool relaxed, string logId, string correlationId, string tenantId, DateTime timestamp, List<ViolationDto>? violations)
             {
                 var bucket = ToScoreBucket(impact);
                 return new ScoringEventDto
