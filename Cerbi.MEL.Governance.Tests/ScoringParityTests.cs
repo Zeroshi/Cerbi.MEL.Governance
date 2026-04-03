@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Cerbi;
 using CerbiShield.Contracts;
 using CerbiShield.Contracts.Scoring;
 using Cerbi.Governance;
-using Cerbi.Serilog.Governance;
 using Microsoft.Extensions.Logging;
 using Moq;
 using Xunit;
@@ -242,7 +240,7 @@ namespace Cerbi.Tests
 
         private static class ReferenceScoreBuilder
         {
-            public static ScoringEventDto Build(CerbiGovernanceMELSettings settings, string topic, double impact, bool relaxed, string logId, string correlationId, string tenantId, DateTime timestamp, List<ViolationDto>? violations)
+            public static ScoringEventDto Build(CerbiGovernanceMELSettings settings, string topic, double impact, bool relaxed, string logId, string correlationId, string tenantId, DateTime timestamp, IReadOnlyList<ViolationDto> violations)
             {
                 var bucket = ToScoreBucket(impact);
                 return new ScoringEventDto
@@ -260,7 +258,7 @@ namespace Cerbi.Tests
                     LogLevel = LogLevel.Warning.ToString(),
                     Score = new ScoreBreakdownDto { Overall = bucket, Governance = bucket },
                     GovernanceFlags = new GovernanceFlagsDto { GovernanceRelaxed = relaxed },
-                    Violations = violations
+                    Violations = violations?.ToList()
                 };
             }
 
