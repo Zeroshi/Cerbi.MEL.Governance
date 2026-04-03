@@ -229,7 +229,7 @@ namespace Cerbi
                 TenantId = tenantId,
                 AppName = _settings.AppName,
                 Environment = _settings.Environment,
-                Runtime = $".NET {Environment.Version}",
+                Runtime = $".NET {System.Environment.Version}",
                 TimestampUtc = DateTime.UtcNow,
                 LogId = logId,
                 CorrelationId = correlationId,
@@ -251,10 +251,10 @@ namespace Cerbi
             _scoreShipper.Enqueue(scoreEvent);
         }
 
-        private static IReadOnlyList<ViolationDto> ExtractViolations(Dictionary<string, object> fields)
+        private static List<ViolationDto> ExtractViolations(Dictionary<string, object> fields)
         {
             if (!fields.TryGetValue("GovernanceViolations", out var rawViolations) || rawViolations == null)
-                return Array.Empty<ViolationDto>();
+                return new List<ViolationDto>();
 
             if (rawViolations is IEnumerable enumerable)
             {
@@ -263,10 +263,10 @@ namespace Cerbi
                 {
                     list.Add(ConvertViolation(item));
                 }
-                return list.ToArray();
+                return list;
             }
 
-            return Array.Empty<ViolationDto>();
+            return new List<ViolationDto>();
         }
 
         private static ViolationDto ConvertViolation(object? violation)
