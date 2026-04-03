@@ -1,4 +1,3 @@
-using Cerbi.Serilog.Governance;
 using Cerbi.Governance;
 using CerbiShield.Contracts;
 using CerbiShield.Contracts.Scoring;
@@ -57,7 +56,7 @@ namespace Cerbi
             _categoryName = categoryName ?? string.Empty;
             _isGovernanceEnabled = isGovernanceEnabled;
             _settings = settings ?? new CerbiGovernanceMELSettings();
-            _scoreShipper = shipper ?? new Cerbi.Serilog.Governance.ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
+            _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -229,7 +228,7 @@ namespace Cerbi
                 TenantId = tenantId,
                 AppName = _settings.AppName,
                 Environment = _settings.Environment,
-                Runtime = $".NET {System.Environment.Version}",
+                Runtime = $".NET {Environment.Version}",
                 TimestampUtc = DateTime.UtcNow,
                 LogId = logId,
                 CorrelationId = correlationId,
@@ -245,16 +244,16 @@ namespace Cerbi
                 {
                     GovernanceRelaxed = relaxed
                 },
-                Violations = summaries
+                Violations = summaries.ToList()
             };
 
             _scoreShipper.Enqueue(scoreEvent);
         }
 
-        private static List<ViolationDto> ExtractViolations(Dictionary<string, object> fields)
+        private static IReadOnlyList<ViolationDto> ExtractViolations(Dictionary<string, object> fields)
         {
             if (!fields.TryGetValue("GovernanceViolations", out var rawViolations) || rawViolations == null)
-                return new List<ViolationDto>();
+                return Array.Empty<ViolationDto>();
 
             if (rawViolations is IEnumerable enumerable)
             {
@@ -263,10 +262,10 @@ namespace Cerbi
                 {
                     list.Add(ConvertViolation(item));
                 }
-                return list;
+                return list.ToArray();
             }
 
-            return new List<ViolationDto>();
+            return Array.Empty<ViolationDto>();
         }
 
         private static ViolationDto ConvertViolation(object? violation)
