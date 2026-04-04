@@ -47,10 +47,10 @@ namespace Cerbi.Tests
             };
 
             var innerLogger = new Mock<ILogger>();
-            var validator = new RuntimeGovernanceValidator(() => true, topic, new FileGovernanceSource("dummy.json")) { CallBase = true };
+            var validator = new RuntimeGovernanceValidator(() => true, topic, new FileGovernanceSource("dummy.json"));
 
             var shipper = new CapturingShipper();
-            var logger = new CerbiGovernanceLogger(innerLogger.Object, validator.Object, topic, null, () => true, shipper, settings);
+            var logger = new CerbiGovernanceLogger(innerLogger.Object, validator, topic, null, () => true, shipper, settings);
 
             var method = typeof(CerbiGovernanceLogger).GetMethod("TryShipScore", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             method!.Invoke(logger, new object[] { state, topic, eventId, LogLevel.Warning });
@@ -103,10 +103,10 @@ namespace Cerbi.Tests
 
             var topic = settings.Profile;
             var innerLogger = new Mock<ILogger>();
-            var validator = new RuntimeGovernanceValidator(() => true, topic, new FileGovernanceSource("dummy.json")) { CallBase = true };
+            var validator = new RuntimeGovernanceValidator(() => true, topic, new FileGovernanceSource("dummy.json"));
 
             var shipper = new CapturingShipper();
-            var logger = new CerbiGovernanceLogger(innerLogger.Object, validator.Object, topic, null, () => true, shipper, settings);
+            var logger = new CerbiGovernanceLogger(innerLogger.Object, validator, topic, null, () => true, shipper, settings);
 
             var state = new Dictionary<string, object>
             {
@@ -202,9 +202,9 @@ namespace Cerbi.Tests
             };
 
             var innerLogger = new Mock<ILogger>().Object;
-            var validator = new RuntimeGovernanceValidator(() => true, settings.Profile, new FileGovernanceSource("dummy.json")) { CallBase = true };
+            var validator = new RuntimeGovernanceValidator(() => true, settings.Profile, new FileGovernanceSource("dummy.json"));
             var shipper = new CapturingShipper();
-            var logger = new CerbiGovernanceLogger(innerLogger, validator.Object, settings.Profile, null, () => true, shipper, settings);
+            var logger = new CerbiGovernanceLogger(innerLogger, validator, settings.Profile, null, () => true, shipper, settings);
 
             var state = new Dictionary<string, object>
             {
