@@ -1,4 +1,3 @@
-﻿using Cerbi.Serilog.Governance;
 using Cerbi.Governance;                // for RuntimeGovernanceValidator, FileGovernanceSource
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -52,7 +51,7 @@ namespace Cerbi
                     client = new HttpClient();
                 }
 
-                var shipper = new Cerbi.Serilog.Governance.ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion);
+                var shipper = new ScoreShipper(client, settings.ScoreShipping, settings.ScoringIngestion);
 
                 return new CerbiLoggerProvider(
                     consoleProv,
