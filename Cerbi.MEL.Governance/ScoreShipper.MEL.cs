@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 using Azure.Messaging.ServiceBus;
 using CerbiShield.Contracts.Scoring;
 
-namespace Cerbi.Serilog.Governance
+namespace Cerbi
 {
     public interface IScoreShipper : IDisposable
     {
