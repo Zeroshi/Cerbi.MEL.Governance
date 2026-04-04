@@ -1,4 +1,4 @@
-﻿using Cerbi;
+﻿﻿using Cerbi;
 using Cerbi.Governance;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
@@ -20,13 +20,12 @@ namespace Cerbi.Tests
 
             var consoleProv = new ConsoleLoggerProvider(optionsMonitorMock.Object);
 
-            // Dummy validator (we won't actually call Validate in this test)
-            var dummyValidator = new Mock<RuntimeGovernanceValidator>(
-                new Func<bool>(() => true),
+            // Dummy validator (real instance — Moq can't proxy RuntimeGovernanceValidator)
+            var dummyValidator = new RuntimeGovernanceValidator(
+                () => true,
                 "unusedProfile",
                 new FileGovernanceSource("dummy.json")
-            )
-            { CallBase = true }.Object;
+            );
 
             var provider = new CerbiLoggerProvider(
                 consoleProvider: consoleProv,
@@ -53,12 +52,11 @@ namespace Cerbi.Tests
 
             var consoleProv = new ConsoleLoggerProvider(optionsMonitorMock.Object);
 
-            var dummyValidator = new Mock<RuntimeGovernanceValidator>(
-                new Func<bool>(() => true),
+            var dummyValidator = new RuntimeGovernanceValidator(
+                () => true,
                 "unusedProfile",
                 new FileGovernanceSource("dummy.json")
-            )
-            { CallBase = true }.Object;
+            );
 
             var provider = new CerbiLoggerProvider(
                 consoleProvider: consoleProv,
@@ -72,3 +70,4 @@ namespace Cerbi.Tests
         }
     }
 }
+
