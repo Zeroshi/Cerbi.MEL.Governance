@@ -1,5 +1,4 @@
-﻿using Cerbi.Governance;
-using Cerbi.Serilog.Governance;
+using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using System;
@@ -23,7 +22,7 @@ namespace Cerbi
 
         // Legacy constructor kept for backward compatibility (tests etc.)
         public CerbiLoggerProvider(ConsoleLoggerProvider consoleProvider, RuntimeGovernanceValidator validator, string profileName)
-            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings(), new Cerbi.Serilog.Governance.ScoreShipper(new HttpClient(), new ScoreShippingOptions())) { }
+            : this(consoleProvider, validator, profileName, new CerbiGovernanceMELSettings(), new ScoreShipper(new HttpClient(), new ScoreShippingOptions())) { }
 
         public CerbiLoggerProvider(
             ConsoleLoggerProvider consoleProvider,
