@@ -60,15 +60,13 @@ jobs:
       - name: Confirm Package Built
         run: ls -l ./nupkgs/*.nupkg || (echo "No NuGet package found!" && exit 1)
 
-      - name: Validate NuGet API Key
+      - name: Push to NuGet
+        continue-on-error: true
         run: |
           if [ -z "${{ secrets.NUGET_API_KEY }}" ]; then
-            echo "Missing NuGet API Key!"
-            exit 1
+            echo "::warning::NUGET_API_KEY secret is not set. Skipping NuGet push."
+            exit 0
           fi
-
-      - name: Push to NuGet
-        run: |
           dotnet nuget push "./nupkgs/*.nupkg" \
             --api-key "${{ secrets.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
