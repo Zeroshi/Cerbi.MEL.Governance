@@ -1,5 +1,9 @@
 ﻿# Cerbi.MEL.Governance
 
+[![CerbiSuite](https://img.shields.io/badge/CerbiSuite-Compatible-brightgreen?style=for-the-badge)](https://cerbi.io)
+
+> ✅ **Now working with CerbiSuite** — Fully integrated with CerbiShield scoring, governance dashboards, and end-to-end traceability across all Cerbi logging SDKs.
+
 **Real-time logging governance enforcement for Microsoft.Extensions.Logging (MEL)** using the Cerbi validation engine.
 
 Cerbi.MEL.Governance is part of the [Cerbi](https://cerbi.io) suite. It enables runtime validation of log fields based on structured governance profiles. Built for ASP.NET Core, Worker Services, Azure Functions, and any .NET app using Microsoft.Extensions.Logging.
