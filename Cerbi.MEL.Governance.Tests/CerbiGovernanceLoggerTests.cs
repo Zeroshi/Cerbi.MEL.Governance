@@ -18,10 +18,13 @@ namespace Cerbi.Tests
  var innerLoggerMock = new Mock<ILogger>();
 
  // Create a dummy RuntimeGovernanceValidator (it won't be invoked because defaultTopic is blank)
- var dummyValidator = new RuntimeGovernanceValidator(() => true,
+ var dummyValidator = new Mock<RuntimeGovernanceValidator>(
+ new Func<bool>(() => true),
  "unusedProfile",
- new FileGovernanceSource("nonexistent.json")
- );
+ new FileGovernanceSource("nonexistent.json"),
+ Array.Empty<IRuntimeGovernancePlugin>()
+ )
+ { CallBase = true }.Object;
 
  var wrapper = new CerbiGovernanceLogger(
  inner: innerLoggerMock.Object,
@@ -56,9 +59,12 @@ namespace Cerbi.Tests
  var innerLoggerMock = new Mock<ILogger>();
  innerLoggerMock.Setup(x => x.IsEnabled(LogLevel.Debug)).Returns(true);
 
- var validator = new RuntimeGovernanceValidator(() => true,
+ var validator = new Mock<RuntimeGovernanceValidator>(
+ new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"));
+ new FileGovernanceSource("dummy.json"),
+ Array.Empty<IRuntimeGovernancePlugin>())
+ { CallBase = true }.Object;
 
  var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, "Topic");
 
@@ -74,9 +80,12 @@ namespace Cerbi.Tests
  innerLoggerMock.Setup(x => x.BeginScope(It.IsAny<string>()))
  .Returns(mockScope.Object);
 
- var validator = new RuntimeGovernanceValidator(() => true,
+ var validator = new Mock<RuntimeGovernanceValidator>(
+ new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"));
+ new FileGovernanceSource("dummy.json"),
+ Array.Empty<IRuntimeGovernancePlugin>())
+ { CallBase = true }.Object;
 
  var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, "Topic");
 
@@ -93,9 +102,11 @@ namespace Cerbi.Tests
  public void NonEmptyTopic_Always_LogsOriginal_WithStructuredState_And_Exception()
  {
  var innerLoggerMock = new Mock<ILogger>();
- var validator = new RuntimeGovernanceValidator(() => true,
+ var validator = new Mock<RuntimeGovernanceValidator>(
+ new Func<bool>(() => true),
  "Profile",
- new FileGovernanceSource("dummy.json"));
+ new FileGovernanceSource("dummy.json"),
+ Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true }.Object;
 
  var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, "Payments");
 
