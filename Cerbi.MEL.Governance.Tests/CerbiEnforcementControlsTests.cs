@@ -20,7 +20,7 @@ namespace Cerbi.Tests
         private static CerbiGovernanceLogger CreateLogger(CerbiGovernanceMELSettings settings, Mock<ILogger>? innerMock = null)
         {
             var inner = (innerMock ?? new Mock<ILogger>()).Object;
-            var validator = new RuntimeGovernanceValidator(() => true, settings.Profile, new FileGovernanceSource("x.json"));
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource("x.json"), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true }.Object;
             var shipper = new NoopScoreShipper();
             return new CerbiGovernanceLogger(inner, validator, settings.Profile, "Cat", () => settings.Enabled, shipper, settings);
         }

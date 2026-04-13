@@ -4,7 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Cerbi;
-using Cerbi.Contracts.Contracts;
+using CerbiShield.Contracts.Scoring;
 using Cerbi.Governance;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -99,7 +99,7 @@ namespace Cerbi.Tests
             var ingestion = new ScoringIngestionOptions { Mode = ScoringIngestionMode.QueueFirst };
             var sender = new FakeQueueSender();
             var shipper = new ScoreShipper(new HttpClient(), opts, ingestion, sender);
-            shipper.Enqueue(new ScoringQueueEnvelopeDto { IdempotencyKey = "key", Payload = new ScoringEventDto { Timestamp = DateTimeOffset.UtcNow } });
+            shipper.Enqueue(new ScoringQueueEnvelopeDto { Payload = new ScoringEventDto { TimestampUtc = DateTime.UtcNow } });
             shipper.FlushForTesting();
             Assert.Equal(1, sender.Calls);
         }
