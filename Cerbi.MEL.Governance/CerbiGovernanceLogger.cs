@@ -179,12 +179,11 @@ namespace Cerbi
                 }
             }
 
-            //8a) Always log the original message exactly as the caller wrote it
-            _inner.Log(logLevel, eventId, state, exception, formatter);
-
-            //8b) Only if there was at least one violation, serialize validated "resultFields" to JSON and log it
-            if (hasViolation)
+            //8a) In Strict mode with violations, suppress the original log (forbidden values must not reach the sink).
+            //    In all other cases (no violations, non-Strict, or relaxed) log the original message as-is.
+            if (hasViolation && _settings.EnforcementMode == GovernanceEnforcementMode.Strict)
             {
+                // Log a redacted governance-annotated payload instead of the raw message
                 string jsonPayload = JsonSerializer.Serialize(resultFields, JsonOpts);
                 _inner.Log(
                     logLevel,
@@ -193,6 +192,24 @@ namespace Cerbi
                     exception,
                     (msg, ex) => msg!
                 );
+            }
+            else
+            {
+                // No violations (or non-Strict / relaxed): pass original message through unchanged
+                _inner.Log(logLevel, eventId, state, exception, formatter);
+
+                //8b) Also emit annotated JSON side-channel when there are violations outside Strict
+                if (hasViolation)
+                {
+                    string jsonPayload = JsonSerializer.Serialize(resultFields, JsonOpts);
+                    _inner.Log(
+                        logLevel,
+                        eventId,
+                        jsonPayload,
+                        exception,
+                        (msg, ex) => msg!
+                    );
+                }
             }
 
             // Score shipping extraction (non-blocking) from validated fields
@@ -207,8 +224,23 @@ namespace Cerbi
         private void TryShipScore(Dictionary<string, object> fields, string topic, EventId eventId, LogLevel logLevel)
         {
             if (!_settings.ScoreShipping.Enabled || !_settings.ScoreShipping.LicenseAllowsScoring) return;
-            if (!fields.TryGetValue("GovernanceScoreImpact", out var rawImpact)) return;
-            if (!double.TryParse(rawImpact?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var impact)) return;
+
+            double impact;
+            if (fields.TryGetValue("GovernanceScoreImpact", out var rawImpact) && double.TryParse(rawImpact?.ToString(), NumberStyles.Any, CultureInfo.InvariantCulture, out impact))
+            {
+                // Use explicit score impact
+            }
+            else
+            {
+                // Compute score impact from violations when validator doesn't produce GovernanceScoreImpact.
+                // Base score 100, deduct 10 per violation, floor at 0.
+                var violationCount = 0;
+                if (fields.TryGetValue("GovernanceViolations", out var rawV) && rawV is IEnumerable e)
+                {
+                    foreach (var _ in e) violationCount++;
+                }
+                impact = violationCount > 0 ? Math.Max(0, 100.0 - (violationCount * 10.0)) : 100.0;
+            }
 
             var relaxed = IsRelaxed(fields) || (fields.TryGetValue("__RelaxComputed", out var relaxComputed) && relaxComputed is bool rb && rb);
             if (!relaxed && fields.TryGetValue("__RelaxComputed", out var relaxComputedStr))

@@ -1,4 +1,4 @@
-﻿# Cerbi.MEL.Governance
+# Cerbi.MEL.Governance
 
 [![CerbiSuite](https://img.shields.io/badge/CerbiSuite-Compatible-brightgreen?style=for-the-badge)](https://cerbi.io)
 
@@ -13,11 +13,13 @@ Cerbi.MEL.Governance is part of the [Cerbi](https://cerbi.io) suite. It enables 
 ## 🚀 Features
 
 * ✅ Enforce required and forbidden fields
+* ✅ **Strict mode suppresses raw forbidden values** — violating messages are replaced by a redacted governance-annotated JSON payload that never reaches the sink
 * ✅ Drop or tag logs with governance violations
 * ✅ Allow relaxed logs (`Relax()` mode)
 * ✅ Supports structured logging and `BeginScope`
 * ✅ Supports `[CerbiTopic("...")]` profile routing via caller class detection (using injected `CerbiTopic` field)
 * ✅ Compatible with any MEL-compatible sink (Console, File, Seq, etc.)
+* ✅ Score shipping always fires — fallback scoring (100 − 10 × violations, floor 0) applied when `GovernanceScoreImpact` is absent
 
 ---
 
@@ -101,7 +103,8 @@ logger.LogInformation("User info: {userId} {email}", "abc123", "test@example.com
 // Violates governance (missing userId)
 logger.LogInformation("Only email provided: {email}", "test@example.com");
 
-// Forbidden field
+// Forbidden field — in Strict mode the raw message is suppressed;
+// a redacted governance JSON payload is emitted instead
 logger.LogInformation("Password in log: {userId} {email} {password}", "abc123", "test@example.com", "secret");
 ```
 
@@ -109,21 +112,40 @@ logger.LogInformation("Password in log: {userId} {email} {password}", "abc123", 
 
 ## 🧐 Governance Output
 
-If governance enrichment is enabled, the logger can tag entries like:
+### Non-Strict / no violations
+The original log message passes through unchanged, with an optional governance-annotated JSON side-channel attached.
+
+### Strict mode + violations (NEW in v1.1)
+The **original message is suppressed**. A redacted JSON payload is emitted to the sink instead, ensuring forbidden field values never leave the application boundary:
 
 ```json
 {
+  "userId": "abc123",
+  "email": "test@example.com",
   "GovernanceProfileUsed": "Orders",
-  "GovernanceViolations": ["MissingField:userId"],
-  "GovernanceRelaxed": false
+  "GovernanceViolations": ["ForbiddenField:password"],
+  "GovernanceRelaxed": false,
+  "GovernanceMode": "Strict"
 }
 ```
+
+Note: the forbidden field value (`password`) is **absent** from the output — it is stripped during redaction.
 
 ---
 
 ## 📊 CerbiShield Scoring Integration (v1.1)
 
 The MEL governance SDK ships **scoring identity metadata** with every governance event, enabling end-to-end traceability in CerbiShield dashboards.
+
+### Score shipping guarantees
+
+| Scenario | Behaviour |
+|----------|-----------|
+| `GovernanceScoreImpact` present in validated fields | Used directly |
+| `GovernanceScoreImpact` absent (validator did not compute it) | Computed as `max(0, 100 − 10 × violationCount)` |
+| Relaxed log | Score impact forced to `0` |
+
+Score events are always enqueued regardless of enforcement mode, so the portal always receives telemetry even for blocked events.
 
 ### Identity Fields
 
