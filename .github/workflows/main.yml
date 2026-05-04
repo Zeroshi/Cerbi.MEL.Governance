@@ -23,14 +23,11 @@ jobs:
           echo "PROJECT_PATH=$PROJECT_PATH" >> $GITHUB_ENV
           echo "SOLUTION_PATH=$SOLUTION_PATH" >> $GITHUB_ENV
 
-      - name: Set Version
+      - name: Read Version from csproj
         run: |
-          BASE=35
-          PATCH=$((BASE + GITHUB_RUN_NUMBER))
-          VERSION="1.0.${PATCH}"
-          echo "Using version: $VERSION"
+          VERSION=$(grep -oP "(?<=<Version>)[^<]+" "${{ env.PROJECT_PATH }}")
+          echo "Using version from csproj: $VERSION"
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          sed -i "s|<Version>.*</Version>|<Version>$VERSION</Version>|g" "${{ env.PROJECT_PATH }}"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v3
