@@ -39,6 +39,7 @@
         // application identity for scoring events
         public string AppName { get; set; } = string.Empty;
         public string Environment { get; set; } = string.Empty;
+        public string TenantId { get; set; } = string.Empty;
         public ScoreShippingOptions ScoreShipping { get; set; } = new();
         public ScoringIngestionOptions ScoringIngestion { get; set; } = new();
     }
