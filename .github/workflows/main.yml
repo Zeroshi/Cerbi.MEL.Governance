@@ -24,6 +24,18 @@ jobs:
           PROJECT_PATH=$(find . -maxdepth 2 -name "Cerbi.MEL.Governance.csproj" | head -n 1)
           TEST_PATH=$(find . -maxdepth 2 -name "*Tests*.csproj" | head -n 1)
           SOLUTION_PATH=$(find . -maxdepth 1 -name "*.sln" | head -n 1)
+          if [ -z "$PROJECT_PATH" ]; then
+            echo "::error::Cerbi.MEL.Governance.csproj was not found."
+            exit 1
+          fi
+          if [ -z "$TEST_PATH" ]; then
+            echo "::error::Test project was not found."
+            exit 1
+          fi
+          if [ -z "$SOLUTION_PATH" ]; then
+            echo "::error::Solution file was not found."
+            exit 1
+          fi
           echo "PROJECT_PATH=$PROJECT_PATH" >> "$GITHUB_ENV"
           echo "TEST_PATH=$TEST_PATH" >> "$GITHUB_ENV"
           echo "SOLUTION_PATH=$SOLUTION_PATH" >> "$GITHUB_ENV"
@@ -51,7 +63,7 @@ jobs:
         run: dotnet test "${{ env.TEST_PATH }}" --configuration Release --no-build --logger "trx;LogFileName=cerbi-mel-governance.trx" --results-directory artifacts/test-results
 
       - name: Pack NuGet Package
-        run: dotnet pack "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output artifacts/nupkgs /p:PackageVersion=1.4.0
+        run: dotnet pack "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output artifacts/nupkgs /p:PackageVersion="${VERSION}"
 
       - name: Verify Package Dependencies
         run: |
@@ -63,11 +75,56 @@ jobs:
             exit 1
           fi
           package="${packages[0]}"
+          expected="artifacts/nupkgs/Cerbi.MEL.Governance.${VERSION}.nupkg"
+          if [ "$package" != "$expected" ]; then
+            echo "::error::Expected package filename '$expected' but found '$package'."
+            exit 1
+          fi
           mkdir -p artifacts/package-inspection
           unzip -p "$package" "Cerbi.MEL.Governance.nuspec" > artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
-          grep -q 'id="Cerbi.Governance.Runtime" version="2.0.43"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
-          grep -q 'id="Cerbi.Governance.Core" version="2.2.37"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
-          grep -q 'id="CerbiShield.Contracts" version="1.3.1"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
+          python3 - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          nuspec_path = Path("artifacts/package-inspection/Cerbi.MEL.Governance.nuspec")
+          expected = {
+              "Cerbi.Governance.Runtime": "2.0.43",
+              "Cerbi.Governance.Core": "2.2.37",
+              "CerbiShield.Contracts": "1.3.1",
+          }
+          expected_frameworks = {"net8.0", "net10.0"}
+          ns = {"n": "http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd"}
+          root = ET.parse(nuspec_path).getroot()
+          groups = root.findall(".//n:dependencies/n:group", ns)
+          failures = []
+          frameworks_seen = set()
+          for group in groups:
+              framework = (group.attrib.get("targetFramework") or "").strip()
+              if framework not in expected_frameworks:
+                  continue
+              frameworks_seen.add(framework)
+              dependencies = {dep.attrib.get("id"): dep.attrib.get("version") for dep in group.findall("n:dependency", ns)}
+              for package_id, version in expected.items():
+                  actual = dependencies.get(package_id)
+                  if actual != version:
+                      failures.append(f"{framework}: expected {package_id} {version}, found {actual or 'missing'}")
+          missing_frameworks = expected_frameworks - frameworks_seen
+          for framework in sorted(missing_frameworks):
+              failures.append(f"Missing dependency group for {framework}")
+          if failures:
+              print("NuSpec dependency validation failed:", file=sys.stderr)
+              for failure in failures:
+                  print(f"- {failure}", file=sys.stderr)
+              sys.exit(1)
+          print("Structured NuSpec dependency validation passed for net8.0 and net10.0.")
+          PY
+          for framework in net8.0 net10.0; do
+            if ! unzip -l "$package" "lib/$framework/Cerbi.MEL.Governance.dll" | grep -q "lib/$framework/Cerbi.MEL.Governance.dll"; then
+              echo "::error::Package is missing lib/$framework/Cerbi.MEL.Governance.dll."
+              exit 1
+            fi
+          done
 
       - name: Upload Test Results
         uses: actions/upload-artifact@v4

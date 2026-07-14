@@ -39,7 +39,7 @@ namespace Cerbi
         private bool _stackTraceChecked;
         private readonly IScoreShipper _scoreShipper;
         private readonly CerbiGovernanceMELSettings _settings;
-        private readonly FieldAliasExpander _aliasExpander;
+        private readonly Lazy<FieldAliasExpander> _aliasExpander;
         private IExternalScopeProvider? _scopeProvider;
 
         // Compact constructor chain
@@ -58,7 +58,9 @@ namespace Cerbi
             _isGovernanceEnabled = isGovernanceEnabled;
             _settings = settings ?? new CerbiGovernanceMELSettings();
             _scoreShipper = shipper ?? new ScoreShipper(new System.Net.Http.HttpClient(), _settings.ScoreShipping, _settings.ScoringIngestion);
-            _aliasExpander = FieldAliasExpander.LoadFromConfig(_settings.ConfigPath, _settings.Profile);
+            _aliasExpander = new Lazy<FieldAliasExpander>(
+                () => FieldAliasExpander.LoadFromConfig(_settings.ConfigPath, _settings.Profile),
+                LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
         public IDisposable? BeginScope<TState>(TState state) where TState : notnull
@@ -121,7 +123,7 @@ namespace Cerbi
             var fields = ExtractFields(state);
 
             //3a) Expand field aliases so aliased names resolve to canonical names before validation
-            _aliasExpander.ExpandAliases(fields);
+            _aliasExpander.Value.ExpandAliases(fields);
 
             var relaxRequested = IsRelaxed(fields);
             var originalFields = CloneFields(fields);
