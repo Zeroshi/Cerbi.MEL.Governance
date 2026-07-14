@@ -23,8 +23,6 @@
     </PackageReference>
   </ItemGroup>
 
-  <!-- CerbiShield.Contracts v1.2.1 comes transitively via project reference -->
-
   <ItemGroup>
     <ProjectReference Include="..\Cerbi.MEL.Governance\Cerbi.MEL.Governance.csproj" />
   </ItemGroup>

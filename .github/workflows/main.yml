@@ -4,33 +4,38 @@ on:
   push:
     branches:
       - master
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
-  build-and-publish:
-    name: Build, Test, and Publish NuGet Package
+  build-test-pack:
+    name: Restore, Build, Test, and Pack
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Locate Main Project and Solution Files
         id: locate
         run: |
           PROJECT_PATH=$(find . -maxdepth 2 -name "Cerbi.MEL.Governance.csproj" | head -n 1)
+          TEST_PATH=$(find . -maxdepth 2 -name "*Tests*.csproj" | head -n 1)
           SOLUTION_PATH=$(find . -maxdepth 1 -name "*.sln" | head -n 1)
-          echo "PROJECT_PATH=$PROJECT_PATH" >> $GITHUB_ENV
-          echo "SOLUTION_PATH=$SOLUTION_PATH" >> $GITHUB_ENV
+          echo "PROJECT_PATH=$PROJECT_PATH" >> "$GITHUB_ENV"
+          echo "TEST_PATH=$TEST_PATH" >> "$GITHUB_ENV"
+          echo "SOLUTION_PATH=$SOLUTION_PATH" >> "$GITHUB_ENV"
 
       - name: Read Version from csproj
         run: |
           VERSION=$(grep -oP "(?<=<Version>)[^<]+" "${{ env.PROJECT_PATH }}")
           echo "Using version from csproj: $VERSION"
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: |
             8.0.x
@@ -43,28 +48,48 @@ jobs:
         run: dotnet build "${{ env.SOLUTION_PATH }}" --configuration Release --no-restore
 
       - name: Run Unit Tests
-        run: |
-          TEST_PATH=$(find . -maxdepth 2 -name "*Tests*.csproj" | head -n 1)
-          if [ -z "$TEST_PATH" ]; then
-            echo "No test project found, skipping tests."
-          else
-            dotnet test "$TEST_PATH" --configuration Release --no-restore --logger:"console;verbosity=detailed"
-          fi
+        run: dotnet test "${{ env.TEST_PATH }}" --configuration Release --no-build --logger "trx;LogFileName=cerbi-mel-governance.trx" --results-directory artifacts/test-results
 
       - name: Pack NuGet Package
-        run: dotnet pack "${{ env.PROJECT_PATH }}" --configuration Release --output ./nupkgs
+        run: dotnet pack "${{ env.PROJECT_PATH }}" --configuration Release --no-build --output artifacts/nupkgs /p:PackageVersion=1.4.0
 
-      - name: Confirm Package Built
-        run: ls -l ./nupkgs/*.nupkg || (echo "No NuGet package found!" && exit 1)
+      - name: Verify Package Dependencies
+        run: |
+          set -euo pipefail
+          mapfile -t packages < <(find artifacts/nupkgs -maxdepth 1 -name "Cerbi.MEL.Governance.*.nupkg" ! -name "*.symbols.nupkg" | sort)
+          if [ "${#packages[@]}" -ne 1 ]; then
+            printf 'Expected exactly one package, found %s\n' "${#packages[@]}"
+            printf '%s\n' "${packages[@]}"
+            exit 1
+          fi
+          package="${packages[0]}"
+          mkdir -p artifacts/package-inspection
+          unzip -p "$package" "Cerbi.MEL.Governance.nuspec" > artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
+          grep -q 'id="Cerbi.Governance.Runtime" version="2.0.43"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
+          grep -q 'id="Cerbi.Governance.Core" version="2.2.37"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
+          grep -q 'id="CerbiShield.Contracts" version="1.3.1"' artifacts/package-inspection/Cerbi.MEL.Governance.nuspec
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: artifacts/test-results
+
+      - name: Upload NuGet Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/nupkgs/*.nupkg
 
       - name: Push to NuGet
-        continue-on-error: true
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
           if [ -z "${{ secrets.NUGET_API_KEY }}" ]; then
             echo "::warning::NUGET_API_KEY secret is not set. Skipping NuGet push."
             exit 0
           fi
-          dotnet nuget push "./nupkgs/*.nupkg" \
+          dotnet nuget push "artifacts/nupkgs/*.nupkg" \
             --api-key "${{ secrets.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate

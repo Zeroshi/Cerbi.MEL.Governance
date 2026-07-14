@@ -40,16 +40,26 @@ dotnet add package Cerbi.MEL.Governance
   "EnforcementMode": "Strict",
   "LoggingProfiles": {
     "Orders": {
-      "FieldSeverities": {
-        "userId": "Required",
-        "email": "Required",
-        "password": "Forbidden"
-      },
-      "AllowRelax": true,
-      "RequireTopic": true,
-      "AllowedTopics": ["Orders"]
+      "name": "Orders",
+      "version": "2026.07",
+      "requiredFields": ["requestId"],
+      "disallowedFields": ["password"],
+      "fieldSeverities": {}
     }
   }
+}
+```
+
+
+Root canonical governance files are also supported when `LoggingProfiles` is absent:
+
+```json
+{
+  "name": "Orders",
+  "version": "2026.07",
+  "requiredFields": ["requestId"],
+  "disallowedFields": ["password"],
+  "fieldSeverities": {}
 }
 ```
 

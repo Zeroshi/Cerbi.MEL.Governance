@@ -35,7 +35,7 @@ namespace Cerbi.Tests
             var validator = new Mock<RuntimeGovernanceValidator>(
                 new Func<bool>(() => true),
                 settings.Profile,
-                new FileGovernanceSource("nonexistent.json"),
+                new FileGovernanceSource("nonexistent.json", settings.Profile),
                 Array.Empty<IRuntimeGovernancePlugin>())
             { CallBase = true }.Object;
 

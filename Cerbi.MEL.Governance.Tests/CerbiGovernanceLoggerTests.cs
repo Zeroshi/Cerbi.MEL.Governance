@@ -21,7 +21,7 @@ namespace Cerbi.Tests
  var dummyValidator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "unusedProfile",
- new FileGovernanceSource("nonexistent.json"),
+ new FileGovernanceSource("nonexistent.json", "unusedProfile"),
  Array.Empty<IRuntimeGovernancePlugin>()
  )
  { CallBase = true }.Object;
@@ -62,7 +62,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "any"),
  Array.Empty<IRuntimeGovernancePlugin>())
  { CallBase = true }.Object;
 
@@ -83,7 +83,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "any"),
  Array.Empty<IRuntimeGovernancePlugin>())
  { CallBase = true }.Object;
 
@@ -105,7 +105,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "Profile",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "any"),
  Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true }.Object;
 
  var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, "Payments");

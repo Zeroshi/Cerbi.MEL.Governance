@@ -60,7 +60,7 @@ namespace Cerbi
         /// <summary>
         /// Parses fieldAliases from a governance JSON config file.
         /// Supports both canonical format (root-level fieldAliases) and wrapper format
-        /// (LoggingProfiles → profile → fieldAliases).
+        /// (LoggingProfiles → selected profile → fieldAliases).
         /// </summary>
         public static FieldAliasExpander LoadFromConfig(string configPath, string profileName)
         {
@@ -74,28 +74,19 @@ namespace Cerbi
                 using var doc = JsonDocument.Parse(fs);
                 var root = doc.RootElement;
 
-                // Try canonical format: root-level fieldAliases
-                if (TryParseAliasesFromElement(root, aliases))
-                    return new FieldAliasExpander(aliases);
-
-                // Try wrapper format: LoggingProfiles → profileName → fieldAliases
-                if (root.TryGetProperty("LoggingProfiles", out var profiles) &&
-                    profiles.ValueKind == JsonValueKind.Object)
+                if (TryGetPropertyCaseInsensitive(root, "LoggingProfiles", out var profiles))
                 {
-                    JsonElement profileEl = default;
-                    bool found = false;
-                    foreach (var p in profiles.EnumerateObject())
-                    {
-                        if (string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            profileEl = p.Value;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (found)
-                        TryParseAliasesFromElement(profileEl, aliases);
+                    var profile = SelectWrappedProfile(profiles, profileName);
+                    TryParseAliasesFromElement(profile, aliases);
+                    return new FieldAliasExpander(aliases);
                 }
+
+                // No wrapper means Runtime 2.0.43 canonical root profile semantics.
+                TryParseAliasesFromElement(root, aliases);
+            }
+            catch (InvalidDataException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -103,6 +94,55 @@ namespace Cerbi
             }
 
             return new FieldAliasExpander(aliases);
+        }
+
+        private static JsonElement SelectWrappedProfile(JsonElement profiles, string profileName)
+        {
+            if (profiles.ValueKind != JsonValueKind.Object)
+                throw new InvalidDataException("LoggingProfiles must be a JSON object.");
+
+            if (string.IsNullOrWhiteSpace(profileName))
+                throw new InvalidDataException("A profile name is required when LoggingProfiles is present.");
+
+            JsonElement? caseInsensitiveMatch = null;
+            var caseInsensitiveMatchCount = 0;
+
+            foreach (var profile in profiles.EnumerateObject())
+            {
+                if (string.Equals(profile.Name, profileName, StringComparison.Ordinal))
+                    return profile.Value;
+
+                if (string.Equals(profile.Name, profileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    caseInsensitiveMatch = profile.Value;
+                    caseInsensitiveMatchCount++;
+                }
+            }
+
+            return caseInsensitiveMatchCount switch
+            {
+                1 => caseInsensitiveMatch!.Value,
+                > 1 => throw new InvalidDataException($"Multiple LoggingProfiles match '{profileName}' case-insensitively."),
+                _ => throw new InvalidDataException($"LoggingProfiles does not contain requested profile '{profileName}'.")
+            };
+        }
+
+        private static bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
+        {
+            if (element.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        value = property.Value;
+                        return true;
+                    }
+                }
+            }
+
+            value = default;
+            return false;
         }
 
         private static bool TryParseAliasesFromElement(JsonElement element, Dictionary<string, List<string>> aliases)

@@ -41,7 +41,7 @@ namespace Cerbi.Tests
         private CerbiGovernanceLogger CreateLogger(ScoreShippingOptions opts)
         {
             var innerLogger = new Mock<ILogger>().Object;
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json")) { CallBase = true }.Object;
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json", "p")) { CallBase = true }.Object;
             var settings = new CerbiGovernanceMELSettings
             {
                 Profile = "p",
@@ -68,7 +68,7 @@ namespace Cerbi.Tests
         {
             var opts = new ScoreShippingOptions { Enabled = true, LicenseAllowsScoring = true, Endpoint = "http://localhost" };
             var innerLogger = new Mock<ILogger>().Object;
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json")) { CallBase = true }.Object;
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json", "p")) { CallBase = true }.Object;
             var settings = new CerbiGovernanceMELSettings { Profile = "p", AppName = "app", Environment = "env", ScoreShipping = opts, ScoringIngestion = new ScoringIngestionOptions() };
             var testShipper = new TestScoreShipper();
             var logger = new CerbiGovernanceLogger(innerLogger, validator, settings.Profile, "Cat", () => true, testShipper, settings);
@@ -82,7 +82,7 @@ namespace Cerbi.Tests
         {
             var opts = new ScoreShippingOptions { Enabled = true, LicenseAllowsScoring = false, Endpoint = "http://localhost" };
             var innerLogger = new Mock<ILogger>().Object;
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json")) { CallBase = true }.Object;
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), "p", new FileGovernanceSource("x.json", "p")) { CallBase = true }.Object;
             var settings = new CerbiGovernanceMELSettings { Profile = "p", AppName = "app", Environment = "env", ScoreShipping = opts, ScoringIngestion = new ScoringIngestionOptions() };
             var testShipper = new TestScoreShipper();
             var logger = new CerbiGovernanceLogger(innerLogger, validator, settings.Profile, "Cat", () => true, testShipper, settings);

@@ -24,7 +24,7 @@ namespace Cerbi.Tests
             var dummyValidator = new Mock<RuntimeGovernanceValidator>(
                 new Func<bool>(() => true),
                 "unusedProfile",
-                new FileGovernanceSource("dummy.json"),
+                new FileGovernanceSource("dummy.json", "unusedProfile"),
                 Array.Empty<IRuntimeGovernancePlugin>()
             )
             { CallBase = true }.Object;
@@ -57,7 +57,7 @@ namespace Cerbi.Tests
             var dummyValidator = new Mock<RuntimeGovernanceValidator>(
                 new Func<bool>(() => true),
                 "unusedProfile",
-                new FileGovernanceSource("dummy.json"),
+                new FileGovernanceSource("dummy.json", "unusedProfile"),
                 Array.Empty<IRuntimeGovernancePlugin>()
             )
             { CallBase = true }.Object;
