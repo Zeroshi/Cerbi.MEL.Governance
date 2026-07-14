@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Moq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Xunit;
 
 namespace Cerbi.Tests
@@ -21,7 +22,7 @@ namespace Cerbi.Tests
  var dummyValidator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "unusedProfile",
- new FileGovernanceSource("nonexistent.json"),
+ new FileGovernanceSource("nonexistent.json", "unusedProfile"),
  Array.Empty<IRuntimeGovernancePlugin>()
  )
  { CallBase = true }.Object;
@@ -62,7 +63,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "any"),
  Array.Empty<IRuntimeGovernancePlugin>())
  { CallBase = true }.Object;
 
@@ -83,7 +84,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "any",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "any"),
  Array.Empty<IRuntimeGovernancePlugin>())
  { CallBase = true }.Object;
 
@@ -105,7 +106,7 @@ namespace Cerbi.Tests
  var validator = new Mock<RuntimeGovernanceValidator>(
  new Func<bool>(() => true),
  "Profile",
- new FileGovernanceSource("dummy.json"),
+ new FileGovernanceSource("dummy.json", "Profile"),
  Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true }.Object;
 
  var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, "Payments");
@@ -124,5 +125,164 @@ namespace Cerbi.Tests
  It.IsAny<Func<List<KeyValuePair<string, object>>, Exception, string>>()),
  Times.AtLeastOnce);
  }
+
+ [Fact]
+ public void DisabledGovernance_WithMissingWrappedProfile_DoesNotThrowDuringCreationOrLogging()
+ {
+ using var file = TempGovernanceFile.Create(MissingOrdersProfileJson);
+ var settings = new CerbiGovernanceMELSettings
+ {
+ Profile = "Orders",
+ ConfigPath = file.Path,
+ Enabled = false,
+ EnforcementMode = GovernanceEnforcementMode.Strict
+ };
+ var logger = CreateLoggerWithSettings(settings);
+ var state = new List<KeyValuePair<string, object>> { new("rid", "r-1") };
+
+ var exception = Record.Exception(() => logger.Log(LogLevel.Information, new EventId(10), state, null, (s, e) => "msg"));
+
+ Assert.Null(exception);
  }
-}
+
+ [Fact]
+ public void OffMode_WithMissingWrappedProfile_DoesNotThrow()
+ {
+ using var file = TempGovernanceFile.Create(MissingOrdersProfileJson);
+ var settings = new CerbiGovernanceMELSettings
+ {
+ Profile = "Orders",
+ ConfigPath = file.Path,
+ Enabled = true,
+ EnforcementMode = GovernanceEnforcementMode.Off
+ };
+ var logger = CreateLoggerWithSettings(settings);
+ var state = new List<KeyValuePair<string, object>> { new("rid", "r-1") };
+
+ var exception = Record.Exception(() => logger.Log(LogLevel.Information, new EventId(11), state, null, (s, e) => "msg"));
+
+ Assert.Null(exception);
+ }
+
+ [Fact]
+ public void ReEnabledSettings_LoadAliasesOnNextGovernedEvent()
+ {
+ using var file = TempGovernanceFile.Create(MissingOrdersProfileJson);
+ var settings = new CerbiGovernanceMELSettings
+ {
+ Profile = "Orders",
+ ConfigPath = file.Path,
+ Enabled = false,
+ EnforcementMode = GovernanceEnforcementMode.Strict
+ };
+ var logger = CreateLoggerWithSettings(settings);
+ var state = new List<KeyValuePair<string, object>> { new("rid", "r-1") };
+
+ logger.Log(LogLevel.Information, new EventId(12), state, null, (s, e) => "msg");
+ settings.Enabled = true;
+
+ Assert.Throws<InvalidDataException>(() => logger.Log(LogLevel.Information, new EventId(13), state, null, (s, e) => "msg"));
+ }
+
+ [Fact]
+ public void StrictMode_WithMissingWrappedProfile_ThrowsWhenGovernanceApplies()
+ {
+ using var file = TempGovernanceFile.Create(MissingOrdersProfileJson);
+ var settings = new CerbiGovernanceMELSettings
+ {
+ Profile = "Orders",
+ ConfigPath = file.Path,
+ Enabled = true,
+ EnforcementMode = GovernanceEnforcementMode.Strict
+ };
+ var logger = CreateLoggerWithSettings(settings);
+ var state = new List<KeyValuePair<string, object>> { new("rid", "r-1") };
+
+ Assert.Throws<InvalidDataException>(() => logger.Log(LogLevel.Information, new EventId(14), state, null, (s, e) => "msg"));
+ }
+
+
+ [Fact]
+ public void LoggerAliasExpansion_UsesSelectedWrappedProfileAliases()
+ {
+ using var file = TempGovernanceFile.Create("""
+ {
+   "EnforcementMode": "Strict",
+   "LoggingProfiles": {
+     "Orders": {
+       "name": "Orders",
+       "version": "2026.07",
+       "requiredFields": ["requestId"],
+       "disallowedFields": ["password"],
+       "fieldSeverities": {},
+       "fieldAliases": { "requestId": ["rid"] }
+     }
+   }
+ }
+ """);
+ var settings = new CerbiGovernanceMELSettings
+ {
+ Profile = "Orders",
+ ConfigPath = file.Path,
+ Enabled = true,
+ EnforcementMode = GovernanceEnforcementMode.Strict
+ };
+ var innerLoggerMock = new Mock<ILogger>();
+ var validator = new RuntimeGovernanceValidator(
+ new Func<bool>(() => true),
+ settings.Profile,
+ new FileGovernanceSource(file.Path, settings.Profile));
+ var logger = new CerbiGovernanceLogger(innerLoggerMock.Object, validator, settings.Profile, null, () => settings.Enabled, null, settings);
+ var state = new List<KeyValuePair<string, object>> { new("rid", "r-1") };
+
+ logger.Log(LogLevel.Information, new EventId(15), state, null, (s, e) => "msg");
+
+ innerLoggerMock.Verify(x => x.Log(
+ LogLevel.Information,
+ It.Is<EventId>(eid => eid.Id == 15),
+ It.Is<List<KeyValuePair<string, object>>>(lst => ReferenceEquals(lst, state)),
+ null,
+ It.IsAny<Func<List<KeyValuePair<string, object>>, Exception?, string>>()),
+ Times.Once);
+ }
+
+ private const string MissingOrdersProfileJson = """
+ {
+   "LoggingProfiles": {
+     "Payments": {
+       "fieldAliases": { "requestId": ["rid"] }
+     }
+   }
+ }
+ """;
+
+ private static CerbiGovernanceLogger CreateLoggerWithSettings(CerbiGovernanceMELSettings settings)
+ {
+ var innerLoggerMock = new Mock<ILogger>();
+ var validator = new Mock<RuntimeGovernanceValidator>(
+ new Func<bool>(() => true),
+ settings.Profile,
+ new FileGovernanceSource("dummy.json", settings.Profile),
+ Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true }.Object;
+
+ return new CerbiGovernanceLogger(innerLoggerMock.Object, validator, settings.Profile, null, () => settings.Enabled, null, settings);
+ }
+
+ private sealed class TempGovernanceFile : IDisposable
+ {
+ public TempGovernanceFile(string path) => Path = path;
+ public string Path { get; }
+ public static TempGovernanceFile Create(string json)
+ {
+ var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"cerbi-governance-{Guid.NewGuid():N}.json");
+ File.WriteAllText(path, json);
+ return new TempGovernanceFile(path);
+ }
+ public void Dispose()
+ {
+ if (File.Exists(Path)) File.Delete(Path);
+ }
+ }
+
+ }
+ }

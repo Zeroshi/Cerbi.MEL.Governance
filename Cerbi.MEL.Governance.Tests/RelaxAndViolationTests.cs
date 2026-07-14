@@ -21,7 +21,7 @@ namespace Cerbi.Tests
                 ScoringIngestion = new ScoringIngestionOptions()
             };
 
-            var validator = new RuntimeGovernanceValidator(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource(settings.ConfigPath));
+            var validator = new RuntimeGovernanceValidator(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource(settings.ConfigPath, settings.Profile));
             var shipper = new CapturingShipper();
             var logger = new CerbiGovernanceLogger(new Mock<ILogger>().Object, validator, settings.Profile, null, () => true, shipper, settings);
 
@@ -52,7 +52,7 @@ namespace Cerbi.Tests
                 ScoringIngestion = new ScoringIngestionOptions()
             };
 
-            var validator = new RuntimeGovernanceValidator(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource(settings.ConfigPath));
+            var validator = new RuntimeGovernanceValidator(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource(settings.ConfigPath, settings.Profile));
             var shipper = new CapturingShipper();
             var logger = new CerbiGovernanceLogger(new Mock<ILogger>().Object, validator, settings.Profile, null, () => true, shipper, settings);
 

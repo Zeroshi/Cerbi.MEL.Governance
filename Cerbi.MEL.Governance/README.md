@@ -17,7 +17,7 @@ Standard loggers / collectors (Serilog, NLog, Log4Net, MEL console/file, OpenTel
 
 ## Installation
 ```bash
-dotnet add package Cerbi.MEL.Governance --version 1.0.36
+dotnet add package Cerbi.MEL.Governance --version 1.4.0
 ```
 
 ## Enforcement Modes and Controls
@@ -31,16 +31,26 @@ dotnet add package Cerbi.MEL.Governance --version 1.0.36
   "EnforcementMode": "Strict",
   "LoggingProfiles": {
     "Orders": {
-      "FieldSeverities": {
-        "userId": "Required",
-        "email": "Required",
-        "password": "Forbidden"
-      },
-      "AllowRelax": true,
-      "RequireTopic": true,
-      "AllowedTopics": ["Orders"]
+      "name": "Orders",
+      "version": "2026.07",
+      "requiredFields": ["requestId"],
+      "disallowedFields": ["password"],
+      "fieldSeverities": {}
     }
   }
+}
+```
+
+
+Root canonical governance files are also supported when `LoggingProfiles` is absent:
+
+```json
+{
+  "name": "Orders",
+  "version": "2026.07",
+  "requiredFields": ["requestId"],
+  "disallowedFields": ["password"],
+  "fieldSeverities": {}
 }
 ```
 

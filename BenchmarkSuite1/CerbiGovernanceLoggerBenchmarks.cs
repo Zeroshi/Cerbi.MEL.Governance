@@ -34,7 +34,7 @@ namespace Cerbi.MEL.Governance.Benchmarks
  var validator = new RuntimeGovernanceValidator(
  () => false,
  "Payments",
- new FileGovernanceSource("nonexistent.json"));
+ new FileGovernanceSource("nonexistent.json", "Payments"));
 
  _logger = new CerbiGovernanceLogger(_inner, validator, "Payments");
  _state = new List<KeyValuePair<string, object>>
@@ -66,7 +66,7 @@ namespace Cerbi.MEL.Governance.Benchmarks
  var validator = new RuntimeGovernanceValidator(
  () => false,
  "Unused",
- new FileGovernanceSource("nonexistent.json"));
+ new FileGovernanceSource("nonexistent.json", "Unused"));
  // Default topic empty → early bypass to inner logger
  _logger = new CerbiGovernanceLogger(_inner, validator, "");
  }

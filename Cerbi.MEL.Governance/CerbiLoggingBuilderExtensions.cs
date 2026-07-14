@@ -26,7 +26,7 @@ namespace Cerbi
             var validator = new RuntimeGovernanceValidator(
                 () => settings.Enabled && settings.EnforcementMode != GovernanceEnforcementMode.Off,
                 settings.Profile,
-                new FileGovernanceSource(settings.ConfigPath)
+                new FileGovernanceSource(settings.ConfigPath, settings.Profile)
             );
 
             // Ensure a single ConsoleLoggerProvider can be resolved

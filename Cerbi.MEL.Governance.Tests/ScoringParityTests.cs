@@ -47,7 +47,7 @@ namespace Cerbi.Tests
             };
 
             var innerLogger = new Mock<ILogger>();
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), topic, new FileGovernanceSource("dummy.json"), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), topic, new FileGovernanceSource("dummy.json", topic), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
 
             var shipper = new CapturingShipper();
             var logger = new CerbiGovernanceLogger(innerLogger.Object, validator.Object, topic, null, () => true, shipper, settings);
@@ -103,7 +103,7 @@ namespace Cerbi.Tests
 
             var topic = settings.Profile;
             var innerLogger = new Mock<ILogger>();
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), topic, new FileGovernanceSource("dummy.json"), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), topic, new FileGovernanceSource("dummy.json", topic), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
 
             var shipper = new CapturingShipper();
             var logger = new CerbiGovernanceLogger(innerLogger.Object, validator.Object, topic, null, () => true, shipper, settings);
@@ -202,7 +202,7 @@ namespace Cerbi.Tests
             };
 
             var innerLogger = new Mock<ILogger>().Object;
-            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource("dummy.json"), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
+            var validator = new Mock<RuntimeGovernanceValidator>(new Func<bool>(() => true), settings.Profile, new FileGovernanceSource("dummy.json", settings.Profile), Array.Empty<IRuntimeGovernancePlugin>()) { CallBase = true };
             var shipper = new CapturingShipper();
             var logger = new CerbiGovernanceLogger(innerLogger, validator.Object, settings.Profile, null, () => true, shipper, settings);
 
